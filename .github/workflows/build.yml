@@ -43,15 +43,13 @@ jobs:
         run: npm run build
 
       - name: Build and Publish Electron App
-        uses: samuelmeuli/action-electron-builder@v1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish: always
-          # We already ran install and build above
-          skip_install: true
-          skip_build: true
+        run: npx electron-builder build --publish always
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # On macOS, code signing is required for auto-updates.
           # For Windows, it's highly recommended.
           # Set these secrets in GitHub if you have certificates:
-          # macos_certs: ${{ secrets.MACOS_CERTS }}
-          # macos_certs_password: ${{ secrets.MACOS_CERTS_PASSWORD }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          # CSC_LINK: ${{ secrets.CSC_LINK }}
+          # CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
