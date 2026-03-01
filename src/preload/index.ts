@@ -46,6 +46,9 @@ export interface ElectronAPI {
     deployToVercel: (params: { databaseUrl: string, adminToken?: string, projectId: string, projectName: string }) => Promise<{ success: boolean; url?: string; error?: string }>
     deleteVercelProject: (params: { projectId: string, projectName: string }) => Promise<{ success: boolean; error?: string }>
     onDeployOutput: (callback: (data: string) => void) => () => void
+    // Updates
+    onUpdateStatus: (callback: (status: string, version?: string) => void) => () => void
+    onUpdateProgress: (callback: (percent: number) => void) => () => void
     // Platform info
     platform: string
 }
@@ -77,6 +80,16 @@ const electronAPI: ElectronAPI = {
         const subscription = (_event: any, data: string) => callback(data)
         ipcRenderer.on('deploy-output', subscription)
         return () => ipcRenderer.removeListener('deploy-output', subscription)
+    },
+    onUpdateStatus: (callback) => {
+        const subscription = (_event: any, status: string, version?: string) => callback(status, version)
+        ipcRenderer.on('update-status', subscription)
+        return () => ipcRenderer.removeListener('update-status', subscription)
+    },
+    onUpdateProgress: (callback) => {
+        const subscription = (_event: any, percent: number) => callback(percent)
+        ipcRenderer.on('update-progress', subscription)
+        return () => ipcRenderer.removeListener('update-progress', subscription)
     },
     platform: process.platform
 }

@@ -650,17 +650,31 @@ ipcMain.handle('delete-vercel-project', async (_event, params: { projectId: stri
 })
 
 // Auto-Updater Configuration
-autoUpdater.on('update-available', () => {
-    console.log('[Updater] Update available')
+autoUpdater.on('checking-for-update', () => {
+    mainWindow?.webContents.send('update-status', 'checking')
 })
 
-autoUpdater.on('update-downloaded', () => {
-    console.log('[Updater] Update downloaded; will install on quit')
-    autoUpdater.quitAndInstall()
+autoUpdater.on('update-available', (info) => {
+    console.log('[Updater] Update available:', info.version)
+    mainWindow?.webContents.send('update-status', 'available', info.version)
+})
+
+autoUpdater.on('update-not-available', () => {
+    mainWindow?.webContents.send('update-status', 'up-to-date')
+})
+
+autoUpdater.on('download-progress', (progressObj) => {
+    mainWindow?.webContents.send('update-progress', Math.round(progressObj.percent))
+})
+
+autoUpdater.on('update-downloaded', (info) => {
+    console.log('[Updater] Update downloaded:', info.version)
+    mainWindow?.webContents.send('update-status', 'downloaded', info.version)
 })
 
 autoUpdater.on('error', (err) => {
     console.error('[Updater] Error:', err)
+    mainWindow?.webContents.send('update-status', 'error', err.message)
 })
 
 app.whenReady().then(() => {
