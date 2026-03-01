@@ -5,6 +5,7 @@ export function UpdaterNotifier() {
     const [version, setVersion] = useState<string | null>(null)
     const [progress, setProgress] = useState<number>(0)
     const [visible, setVisible] = useState(false)
+    const [closeHovered, setCloseHovered] = useState(false)
 
     useEffect(() => {
         const removeStatus = (window as any).electronAPI.onUpdateStatus((newStatus: string, newVersion?: string) => {
@@ -42,30 +43,38 @@ export function UpdaterNotifier() {
     if (!visible) return null
 
     return (
-        <div className="fixed bottom-6 right-6 z-[200] animate-in slide-in-from-right-10 duration-500">
-            <div className="bg-[#111] border border-white/10 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 w-[320px] backdrop-blur-xl">
-                <div className="flex items-center gap-3">
-                    <div className="bg-white/5 p-2.5 rounded-xl border border-white/10">
+        <div
+            className="animate-in slide-in-from-right-10 duration-500"
+            style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 200 }}
+        >
+            <div style={{
+                background: '#111111', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px',
+                padding: '20px', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)',
+                display: 'flex', flexDirection: 'column', gap: '16px', width: '320px',
+                backdropFilter: 'blur(24px)', position: 'relative'
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.05)', padding: '10px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {status === 'downloaded' ? (
-                            <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                            <svg style={{ width: '20px', height: '20px', color: '#34d399' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                             </svg>
                         ) : status === 'error' ? (
-                            <svg className="w-5 h-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
+                            <svg style={{ width: '20px', height: '20px', color: '#f87171' }} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                             </svg>
                         ) : (
-                            <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                            <div className="animate-spin" style={{ width: '20px', height: '20px', border: '2px solid rgba(255,255,255,0.2)', borderTopColor: '#FFFFFF', borderRadius: '50%' }} />
                         )}
                     </div>
-                    <div>
-                        <h4 className="text-[14px] font-bold text-white mb-0.5">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <h4 style={{ fontSize: '14px', fontWeight: 700, color: '#FFFFFF', margin: 0 }}>
                             {status === 'available' && 'Update Available'}
                             {status === 'downloading' && 'Downloading Update'}
                             {status === 'downloaded' && 'Update Ready'}
                             {status === 'error' && 'Update Failed'}
                         </h4>
-                        <p className="text-[12px] text-neutral-400 font-medium">
+                        <p style={{ fontSize: '12px', color: '#9CA3AF', fontWeight: 500, margin: 0 }}>
                             {status === 'available' && `Version ${version} is ready`}
                             {status === 'downloading' && `Fetching software overhaul...`}
                             {status === 'downloaded' && `Installing v${version} now!`}
@@ -75,14 +84,13 @@ export function UpdaterNotifier() {
                 </div>
 
                 {(status === 'downloading' || status === 'available') && (
-                    <div className="space-y-2">
-                        <div className="h-1.5 w-100 bg-white/5 rounded-full overflow-hidden">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ height: '6px', width: '100%', background: 'rgba(255,255,255,0.05)', borderRadius: '9999px', overflow: 'hidden' }}>
                             <div
-                                className="h-full bg-white transition-all duration-300 ease-out"
-                                style={{ width: `${progress}%` }}
+                                style={{ height: '100%', background: '#FFFFFF', width: `${progress}%`, transition: 'width 300ms ease-out' }}
                             />
                         </div>
-                        <div className="flex justify-between items-center text-[10px] uppercase tracking-widest font-bold text-neutral-500">
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700, color: '#737373' }}>
                             <span>{progress}%</span>
                             <span>Secure Layer</span>
                         </div>
@@ -90,17 +98,19 @@ export function UpdaterNotifier() {
                 )}
 
                 {status === 'downloaded' && (
-                    <div className="text-[10px] uppercase tracking-widest font-extrabold text-emerald-500/80 flex items-center gap-2">
-                        <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 800, color: 'rgba(16, 185, 129, 0.8)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span className="animate-pulse" style={{ display: 'flex', height: '6px', width: '6px', borderRadius: '50%', background: '#10b981' }} />
                         Restarting to apply v{version}
                     </div>
                 )}
 
                 <button
                     onClick={() => setVisible(false)}
-                    className="absolute top-3 right-3 text-neutral-600 hover:text-white transition-colors"
+                    style={{ position: 'absolute', top: '12px', right: '12px', color: closeHovered ? '#FFFFFF' : '#52525B', background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', transition: 'color 150ms ease' }}
+                    onMouseEnter={() => setCloseHovered(true)}
+                    onMouseLeave={() => setCloseHovered(false)}
                 >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <svg style={{ width: '16px', height: '16px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
                     </svg>
                 </button>
