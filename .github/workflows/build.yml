@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 30
 
     strategy:
+      fail-fast: false
       matrix:
         os: [windows-latest, macos-latest, ubuntu-latest]
 
@@ -46,6 +47,9 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish: always
+          # We already ran install and build above
+          skip_install: true
+          skip_build: true
           # On macOS, code signing is required for auto-updates.
           # For Windows, it's highly recommended.
           # Set these secrets in GitHub if you have certificates:
