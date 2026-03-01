@@ -86,6 +86,7 @@ ipcMain.handle('select-directory', async () => {
 })
 
 ipcMain.handle('get-app-path', () => app.getPath('userData'))
+ipcMain.handle('get-app-version', () => app.getVersion())
 
 // ─── HTTP Request Handler (Postman-like API testing) ─────────────
 ipcMain.handle('send-http-request', async (_event, opts: {
@@ -675,6 +676,10 @@ autoUpdater.on('update-downloaded', (info) => {
 autoUpdater.on('error', (err) => {
     console.error('[Updater] Error:', err)
     mainWindow?.webContents.send('update-status', 'error', err.message)
+})
+
+ipcMain.handle('restart-app', () => {
+    autoUpdater.quitAndInstall()
 })
 
 app.whenReady().then(() => {

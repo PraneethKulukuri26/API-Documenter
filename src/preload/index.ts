@@ -29,6 +29,7 @@ export interface ElectronAPI {
     readFile: (filePath: string) => Promise<{ success: boolean; data?: string; error?: string }>
     selectDirectory: () => Promise<string | null>
     getAppPath: () => Promise<string>
+    getAppVersion: () => Promise<string>
     // HTTP requests
     sendHttpRequest: (opts: HttpRequestOptions) => Promise<HttpResponse>
     // Remote DB management
@@ -46,6 +47,7 @@ export interface ElectronAPI {
     deployToVercel: (params: { databaseUrl: string, adminToken?: string, projectId: string, projectName: string }) => Promise<{ success: boolean; url?: string; error?: string }>
     deleteVercelProject: (params: { projectId: string, projectName: string }) => Promise<{ success: boolean; error?: string }>
     onDeployOutput: (callback: (data: string) => void) => () => void
+    restartApp: () => Promise<void>
     // Updates
     onUpdateStatus: (callback: (status: string, version?: string) => void) => () => void
     onUpdateProgress: (callback: (percent: number) => void) => () => void
@@ -62,6 +64,7 @@ const electronAPI: ElectronAPI = {
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     selectDirectory: () => ipcRenderer.invoke('select-directory'),
     getAppPath: () => ipcRenderer.invoke('get-app-path'),
+    getAppVersion: () => ipcRenderer.invoke('get-app-version'),
     sendHttpRequest: (opts) => ipcRenderer.invoke('send-http-request', opts),
     testDbConnection: (url) => ipcRenderer.invoke('test-db-connection', url),
     createRemoteTables: (url) => ipcRenderer.invoke('create-remote-tables', url),
@@ -76,6 +79,7 @@ const electronAPI: ElectronAPI = {
     // Deployment
     deployToVercel: (params) => ipcRenderer.invoke('deploy-to-vercel', params),
     deleteVercelProject: (params) => ipcRenderer.invoke('delete-vercel-project', params),
+    restartApp: () => ipcRenderer.invoke('restart-app'),
     onDeployOutput: (callback) => {
         const subscription = (_event: any, data: string) => callback(data)
         ipcRenderer.on('deploy-output', subscription)

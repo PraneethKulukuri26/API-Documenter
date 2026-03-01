@@ -32,6 +32,11 @@ export function Sidebar() {
     const [ctx, setCtx] = useState<{ x: number; y: number; type: 'folder' | 'api'; id: string } | null>(null)
     const [confirmDelete, setConfirmDelete] = useState<{ type: 'folder' | 'api'; id: string; folderId?: string; projectId?: string } | null>(null)
     const [isActionsExpanded, setIsActionsExpanded] = useState(false) // Added state for collapsible actions
+    const [version, setVersion] = useState<string>('')
+
+    useEffect(() => {
+        ; (window as any).electronAPI.getAppVersion().then(setVersion)
+    }, [])
 
     useEffect(() => { const h = () => setCtx(null); window.addEventListener('click', h); return () => window.removeEventListener('click', h) }, [])
 
@@ -260,15 +265,18 @@ export function Sidebar() {
                 })()}
 
                 {/* ═══ Footer meta ═══ */}
-                <div className="text-[10px] font-medium" style={{ flexShrink: 0, padding: '8px 16px', borderTop: '1px solid #1A1A1A', color: '#6B7280' }}>
-                    {folders?.length || 0} folders · {(() => {
-                        if (!currentProjectId) return 'No project'
-                        const p = projects?.find(x => x.id === currentProjectId)
-                        const hasD = p?.databaseUrl && p.databaseUrl.trim() !== ''
-                        const hasP = p?.proxyUrl && p.proxyUrl.trim() !== ''
-                        if (hasD || hasP) return 'Remote'
-                        return 'Local'
-                    })()}
+                <div className="text-[10px] font-medium" style={{ flexShrink: 0, padding: '8px 16px', borderTop: '1px solid #1A1A1A', color: '#6B7280', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>
+                        {folders?.length || 0} folders · {(() => {
+                            if (!currentProjectId) return 'No project'
+                            const p = projects?.find(x => x.id === currentProjectId)
+                            const hasD = p?.databaseUrl && p.databaseUrl.trim() !== ''
+                            const hasP = p?.proxyUrl && p.proxyUrl.trim() !== ''
+                            if (hasD || hasP) return 'Remote'
+                            return 'Local'
+                        })()}
+                    </span>
+                    <span style={{ opacity: 0.5, fontStyle: 'italic' }}>v{version}</span>
                 </div>
             </aside>
 

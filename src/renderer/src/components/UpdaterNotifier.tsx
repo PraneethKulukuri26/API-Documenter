@@ -30,6 +30,15 @@ export function UpdaterNotifier() {
         }
     }, [])
 
+    useEffect(() => {
+        if (status === 'downloaded') {
+            const timer = setTimeout(() => {
+                ; (window as any).electronAPI.restartApp()
+            }, 3000)
+            return () => clearTimeout(timer)
+        }
+    }, [status])
+
     if (!visible) return null
 
     return (
