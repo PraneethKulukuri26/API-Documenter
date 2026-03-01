@@ -94,14 +94,13 @@ export function Sidebar() {
                                 <line x1="2" y1="4" x2="14" y2="4" /><line x1="2" y1="8" x2="10" y2="8" /><line x1="2" y1="12" x2="14" y2="12" />
                             </svg>
                         </button>
-                        <span className="text-[13px] font-semibold text-white tracking-tight">API Documenter</span>
+                        <span style={{ fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600, color: 'white', letterSpacing: '-0.01em' }}>API Documenter</span>
                     </div>
                 </div>
 
                 {/* ═══ PROJECT section ═══ */}
                 <div style={{ flexShrink: 0, borderBottom: '1px solid #1A1A1A' }}>
-                    <p className="text-[10px] tracking-[0.15em] uppercase font-bold"
-                        style={{ padding: '20px 20px 10px 20px', color: '#444', margin: 0 }}>Project Workspace</p>
+                    <p style={{ padding: '20px 20px 10px 20px', color: '#444', margin: 0, fontSize: 'calc(9px * var(--font-scale))', letterSpacing: '0.15em', textTransform: 'uppercase', fontWeight: 800 }}>Project Workspace</p>
                     <div style={{ padding: '0 16px 20px 16px' }}>
                         <select value={isTeamWorkspace ? 'TEAM_PROJECT' : (currentProjectId || '')}
                             onChange={e => {
@@ -109,12 +108,13 @@ export function Sidebar() {
                                 if (e.target.value === 'EXIT_TEAM') { setTeamWorkspace(false); return }
                                 selectProject(e.target.value || null)
                             }}
-                            className="text-[13px] font-semibold rounded-xl cursor-pointer"
+                            className="rounded-xl cursor-pointer"
                             style={{
                                 width: '100%', height: '44px', padding: '0 14px',
                                 background: isTeamWorkspace ? 'linear-gradient(135deg, #1a1a1a 0%, #0a0a0a 100%)' : '#111111',
                                 border: isTeamWorkspace ? '1px solid #444' : '1px solid #222',
                                 color: '#FFFFFF',
+                                fontSize: 'calc(13px * var(--font-scale))', fontWeight: 600,
                                 appearance: 'none', transition: '150ms ease',
                                 backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'8\' height=\'5\' viewBox=\'0 0 8 5\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M1 1l3 3 3-3\' stroke=\'%236B7280\' stroke-width=\'1.5\' fill=\'none\' stroke-linecap=\'round\'/%3E%3C/svg%3E")',
                                 backgroundRepeat: 'no-repeat', backgroundPosition: 'right 14px center'
@@ -137,7 +137,7 @@ export function Sidebar() {
                         {isTeamWorkspace && (
                             <div className="mt-2 px-2 flex items-center gap-2">
                                 <span className="flex h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                <span className="text-[10px] font-bold text-emerald-500 uppercase tracking-widest">Team Live Mode</span>
+                                <span style={{ fontSize: 'calc(9px * var(--font-scale))', fontWeight: 800, color: '#10b981', textTransform: 'uppercase', letterSpacing: '0.15em' }}>Team Live Mode</span>
                             </div>
                         )}
                     </div>
@@ -147,8 +147,7 @@ export function Sidebar() {
                 <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
                     {currentProjectId && (
                         <div style={{ padding: '16px 16px 8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                            <p className="text-[11px] tracking-[0.1em] uppercase font-semibold"
-                                style={{ color: '#6B7280', margin: 0 }}>Folders</p>
+                            <p style={{ color: '#6B7280', margin: 0, fontSize: 'calc(10px * var(--font-scale))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Folders</p>
                             <button
                                 onClick={() => syncNow()}
                                 disabled={isSyncing}

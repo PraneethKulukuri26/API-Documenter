@@ -46,6 +46,30 @@
 
   /* ─── Timing ─────────────────────────────────────── */
   --ease: 150ms ease;
+
+  /* ─── Responsive Multipliers ─────────────────────── */
+  --font-scale: 1;
+}
+
+/* ─── Responsive Scaling ────────────────────────────── */
+@media (max-height: 850px) {
+  :root {
+    --font-scale: 0.95;
+    --topbar-h: 52px;
+  }
+}
+
+@media (max-height: 720px) {
+  :root {
+    --font-scale: 0.9;
+    --topbar-h: 48px;
+  }
+}
+
+@media (max-width: 1200px) {
+  :root {
+    --sidebar-w: 220px;
+  }
 }
 
 /* ═══ Reset ═══════════════════════════════════════════════════════ */
@@ -65,7 +89,7 @@ body,
   background: var(--bg-root);
   color: var(--text-primary);
   -webkit-font-smoothing: antialiased;
-  font-size: 13px;
+  font-size: calc(13px * var(--font-scale));
   line-height: 1.5;
 }
 

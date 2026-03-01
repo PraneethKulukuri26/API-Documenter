@@ -102,8 +102,8 @@ export function CreateProjectDialog() {
                 {/* Header */}
                 <div className="flex justify-between items-start">
                     <div>
-                        <h2 className="text-[20px] font-semibold text-white">{tab === 'create' ? 'New Project' : 'Import Project'}</h2>
-                        <p className="text-[13px] mt-1" style={{ color: '#9CA3AF' }}>
+                        <h2 style={{ fontSize: 'calc(20px * var(--font-scale))', fontWeight: 600, color: 'white', margin: 0 }}>{tab === 'create' ? 'New Project' : 'Import Project'}</h2>
+                        <p style={{ fontSize: 'calc(13px * var(--font-scale))', marginTop: '4px', color: '#9CA3AF', margin: 0 }}>
                             {tab === 'create' ? 'Create a fresh local project' : 'Import an existing project from a database'}
                         </p>
                     </div>
@@ -114,7 +114,7 @@ export function CreateProjectDialog() {
                     <button
                         onClick={() => setTab('create')}
                         style={{
-                            flex: 1, padding: '8px', fontSize: '13px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                            flex: 1, padding: '8px', fontSize: 'calc(13px * var(--font-scale))', borderRadius: '8px', border: 'none', cursor: 'pointer',
                             background: tab === 'create' ? '#1F1F1F' : 'transparent',
                             color: tab === 'create' ? '#FFF' : '#6B7280',
                             transition: 'all 150ms'
@@ -124,7 +124,7 @@ export function CreateProjectDialog() {
                     <button
                         onClick={() => setTab('import')}
                         style={{
-                            flex: 1, padding: '8px', fontSize: '13px', borderRadius: '8px', border: 'none', cursor: 'pointer',
+                            flex: 1, padding: '8px', fontSize: 'calc(13px * var(--font-scale))', borderRadius: '8px', border: 'none', cursor: 'pointer',
                             background: tab === 'import' ? '#1F1F1F' : 'transparent',
                             color: tab === 'import' ? '#FFF' : '#6B7280',
                             transition: 'all 150ms'

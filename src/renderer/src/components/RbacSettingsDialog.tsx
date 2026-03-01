@@ -191,23 +191,30 @@ export function RbacSettingsDialog() {
         <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm animate-in fade-in duration-300" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
             <div
                 className="w-full bg-[#0D0D0D] rounded-[16px] shadow-2xl scale-in"
-                style={{ display: 'flex', flexDirection: 'column', maxWidth: '1000px', maxHeight: '85vh', border: '1px solid #1F1F1F', overflow: 'hidden' }}
+                style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxWidth: 'min(1000px, 94vw)',
+                    maxHeight: 'min(800px, 90vh)',
+                    border: '1px solid #1F1F1F',
+                    overflow: 'hidden'
+                }}
             >
                 {/* Header Section */}
-                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '24px', borderBottom: '1px solid #1A1A1A' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                            <div className="rounded-xl bg-white/5 border border-white/10" style={{ width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '16px 24px', borderBottom: '1px solid #1A1A1A' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div className="rounded-xl bg-white/5 border border-white/10" style={{ width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                     <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
                                 </svg>
                             </div>
-                            <h2 style={{ fontSize: '22px', fontWeight: 600, color: 'white', letterSpacing: '-0.02em', margin: 0 }}>Team & Permissions</h2>
+                            <h2 style={{ fontSize: '18px', fontWeight: 600, color: 'white', letterSpacing: '-0.02em', margin: 0 }}>Team & Permissions</h2>
                         </div>
-                        <p style={{ fontSize: '14px', color: '#9CA3AF', marginLeft: '56px', margin: 0 }}>Configure role-based access control and member provisioning</p>
+                        <p style={{ fontSize: '14px', color: '#9CA3AF', margin: 0, paddingLeft: '48px' }}>Configure role-based access control and member provisioning</p>
                     </div>
-                    <button onClick={() => setShowRbacSettings(false)} className="text-neutral-500 hover:text-white hover:bg-white/5 rounded-xl transition-all duration-200" style={{ padding: '10px', cursor: 'pointer', border: 'none', background: 'transparent' }}>
-                        <svg width="22" height="22" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="15" y1="5" x2="5" y2="15" /><line x1="5" y1="5" x2="15" y2="15" /></svg>
+                    <button onClick={() => setShowRbacSettings(false)} className="text-neutral-500 hover:text-white hover:bg-white/5 rounded-xl transition-all duration-200" style={{ padding: '8px', cursor: 'pointer', border: 'none', background: 'transparent' }}>
+                        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="15" y1="5" x2="5" y2="15" /><line x1="5" y1="5" x2="15" y2="15" /></svg>
                     </button>
                 </div>
 
@@ -241,12 +248,12 @@ export function RbacSettingsDialog() {
                     <div style={{ display: 'flex', width: '100%', opacity: !isDeployed ? 0.2 : 1, filter: !isDeployed ? 'grayscale(100%)' : 'none', pointerEvents: !isDeployed ? 'none' : 'auto' }}>
 
                         {/* LEFT: Provision Section */}
-                        <div style={{ width: '440px', display: 'flex', flexDirection: 'column', borderRight: '1px solid #1A1A1A' }}>
+                        <div style={{ width: 'min(400px, 40%)', flexShrink: 0, display: 'flex', flexDirection: 'column', borderRight: '1px solid #1A1A1A' }}>
                             {/* Left Top */}
                             <div style={{ padding: '32px 32px 0 32px', flexShrink: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
                                     <div className={`rounded-full ${editingMember ? 'bg-white' : 'bg-neutral-600'}`} style={{ width: '4px', height: '16px' }} />
-                                    <h3 style={{ fontSize: '14px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D4D4D8', margin: 0 }}>
+                                    <h3 style={{ fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D4D4D8', margin: 0 }}>
                                         {editingMember ? 'Edit Access' : 'New Member'}
                                     </h3>
                                 </div>
@@ -256,21 +263,21 @@ export function RbacSettingsDialog() {
                             <div className="custom-scrollbar" style={{ flex: 1, overflowY: 'auto', padding: '0 32px 24px 32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
                                 {/* Email Field */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-                                    <label style={{ fontSize: '12px', fontWeight: 500, color: '#A1A1AA', margin: 0 }}>Email Address</label>
+                                    <label style={{ fontSize: 'calc(10px * var(--font-scale))', fontWeight: 500, color: '#A1A1AA', margin: 0 }}>Email Address</label>
                                     <input value={newUser.email} onChange={e => setNewUser({ ...newUser, email: e.target.value })}
                                         placeholder="teammate@example.com"
                                         className="bg-white/5 border border-white/10 rounded-xl text-white outline-none focus:border-white/40 focus:bg-white/[0.07] transition-all"
-                                        style={{ width: '100%', boxSizing: 'border-box', height: '48px', padding: '0 16px', fontSize: '14px' }}
+                                        style={{ width: '100%', boxSizing: 'border-box', height: '44px', padding: '0 16px', fontSize: 'calc(14px * var(--font-scale))' }}
                                     />
                                 </div>
 
                                 {/* Role Field */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-                                    <label style={{ fontSize: '12px', fontWeight: 500, color: '#A1A1AA', margin: 0 }}>Access Role</label>
+                                    <label style={{ fontSize: 'calc(10px * var(--font-scale))', fontWeight: 500, color: '#A1A1AA', margin: 0 }}>Access Role</label>
                                     <div style={{ position: 'relative' }}>
                                         <select value={newUser.role} onChange={e => setNewUser({ ...newUser, role: e.target.value as any })}
                                             className="bg-white/5 border border-white/10 rounded-xl text-white outline-none cursor-pointer hover:border-white/20 transition-all appearance-none"
-                                            style={{ width: '100%', boxSizing: 'border-box', height: '48px', padding: '0 16px', fontSize: '14px', backgroundColor: '#0D0D0D' }}
+                                            style={{ width: '100%', boxSizing: 'border-box', height: '44px', padding: '0 16px', fontSize: 'calc(14px * var(--font-scale))', backgroundColor: '#0D0D0D' }}
                                         >
                                             <option value="viewer">Viewer (Read Only)</option>
                                             <option value="editor">Editor (Modify APIs)</option>
@@ -284,7 +291,7 @@ export function RbacSettingsDialog() {
 
                                 {/* Folders Field */}
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
-                                    <label style={{ fontSize: '12px', fontWeight: 500, color: '#A1A1AA', margin: 0 }}>Allowed Folders</label>
+                                    <label style={{ fontSize: 'calc(10px * var(--font-scale))', fontWeight: 500, color: '#A1A1AA', margin: 0 }}>Allowed Folders</label>
                                     <div className="bg-white/5 border border-white/10 rounded-xl custom-scrollbar" style={{ overflow: 'hidden', overflowY: 'auto', maxHeight: '180px' }}>
 
                                         <label className="hover:bg-white/5 transition-colors cursor-pointer" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
@@ -362,7 +369,7 @@ export function RbacSettingsDialog() {
                             <div style={{ padding: '32px 32px 0 32px', flexShrink: 0 }}>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '24px' }}>
                                     <div className="bg-neutral-600 rounded-full" style={{ width: '4px', height: '16px' }} />
-                                    <h3 style={{ fontSize: '14px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D4D4D8', margin: 0 }}>
+                                    <h3 style={{ fontSize: 'calc(11px * var(--font-scale))', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#D4D4D8', margin: 0 }}>
                                         Team Directory
                                     </h3>
                                 </div>
@@ -389,8 +396,8 @@ export function RbacSettingsDialog() {
                                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, minWidth: 0 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                                    <span style={{ fontSize: '15px', fontWeight: 600, color: '#FFFFFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.email}</span>
-                                                    <span className="bg-white/5 border-white/10" style={{ padding: '2px 10px', borderRadius: '9999px', borderStyle: 'solid', borderWidth: '1px', fontSize: '11px', fontWeight: 700, color: '#A1A1AA', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                                                    <span style={{ fontSize: 'calc(14px * var(--font-scale))', fontWeight: 600, color: '#FFFFFF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{member.email}</span>
+                                                    <span className="bg-white/5 border-white/10" style={{ padding: '2px 10px', borderRadius: '9999px', borderStyle: 'solid', borderWidth: '1px', fontSize: 'calc(10px * var(--font-scale))', fontWeight: 700, color: '#A1A1AA', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
                                                         {member.role}
                                                     </span>
                                                 </div>
