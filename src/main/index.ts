@@ -1,0 +1,683 @@
+import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
+import { join } from 'path'
+import { is } from '@electron-toolkit/utils'
+import fs from 'fs'
+import mysql from 'mysql2/promise'
+import pg from 'pg'
+import { spawn } from 'child_process'
+import { autoUpdater } from 'electron-updater'
+
+let mainWindow: BrowserWindow | null = null
+
+function createWindow(): void {
+    mainWindow = new BrowserWindow({
+        width: 1400,
+        height: 900,
+        minWidth: 1024,
+        minHeight: 700,
+        show: false,
+        frame: false,
+        backgroundColor: '#0f0f17',
+        titleBarStyle: 'hidden',
+        webPreferences: {
+            preload: join(__dirname, '../preload/index.js'),
+            sandbox: false,
+            contextIsolation: true,
+            nodeIntegration: false
+        }
+    })
+
+    mainWindow.on('ready-to-show', () => {
+        mainWindow?.show()
+    })
+
+    mainWindow.webContents.setWindowOpenHandler((details) => {
+        shell.openExternal(details.url)
+        return { action: 'deny' }
+    })
+
+    if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
+        mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    } else {
+        mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    }
+}
+
+// Window controls IPC
+ipcMain.on('window-minimize', () => mainWindow?.minimize())
+ipcMain.on('window-maximize', () => {
+    if (mainWindow?.isMaximized()) {
+        mainWindow.unmaximize()
+    } else {
+        mainWindow?.maximize()
+    }
+})
+ipcMain.on('window-close', () => mainWindow?.close())
+ipcMain.handle('window-is-maximized', () => mainWindow?.isMaximized())
+
+// File system IPC handlers
+ipcMain.handle('save-file', async (_event, filePath: string, data: string) => {
+    try {
+        const dir = join(filePath, '..')
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true })
+        }
+        fs.writeFileSync(filePath, data, 'utf-8')
+        return { success: true }
+    } catch (error) {
+        return { success: false, error: String(error) }
+    }
+})
+
+ipcMain.handle('read-file', async (_event, filePath: string) => {
+    try {
+        const data = fs.readFileSync(filePath, 'utf-8')
+        return { success: true, data }
+    } catch (error) {
+        return { success: false, error: String(error) }
+    }
+})
+
+ipcMain.handle('select-directory', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+        properties: ['openDirectory']
+    })
+    return result.canceled ? null : result.filePaths[0]
+})
+
+ipcMain.handle('get-app-path', () => app.getPath('userData'))
+
+// ─── HTTP Request Handler (Postman-like API testing) ─────────────
+ipcMain.handle('send-http-request', async (_event, opts: {
+    url: string
+    method: string
+    headers: Record<string, string>
+    body?: string
+}) => {
+    const start = performance.now()
+    try {
+        const fetchOpts: RequestInit = {
+            method: opts.method,
+            headers: opts.headers
+        }
+        if (opts.body && !['GET', 'HEAD'].includes(opts.method.toUpperCase())) {
+            fetchOpts.body = opts.body
+        }
+
+        const res = await fetch(opts.url, fetchOpts)
+        const bodyText = await res.text()
+        const elapsed = Math.round(performance.now() - start)
+
+        // Convert headers to plain object
+        const resHeaders: Record<string, string> = {}
+        res.headers.forEach((v, k) => { resHeaders[k] = v })
+
+        return {
+            success: true,
+            status: res.status,
+            statusText: res.statusText,
+            headers: resHeaders,
+            body: bodyText,
+            time: elapsed,
+            size: new TextEncoder().encode(bodyText).length
+        }
+    } catch (error: any) {
+        const elapsed = Math.round(performance.now() - start)
+        return {
+            success: false,
+            error: error.message || String(error),
+            time: elapsed
+        }
+    }
+})
+
+// ─── Remote DB Management IPC ───────────────────────────────────
+
+ipcMain.handle('test-db-connection', async (_event, url: string) => {
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection(url)
+            await conn.ping()
+            await conn.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            await client.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol (mysql:// or postgres://)' }
+})
+
+ipcMain.handle('create-remote-tables', async (_event, url: string) => {
+    const schema = `
+        CREATE TABLE IF NOT EXISTS projects (id VARCHAR(50) PRIMARY KEY, name VARCHAR(100) NOT NULL, database_url VARCHAR(500), proxy_url VARCHAR(500), last_deployed_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS folders (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50), name VARCHAR(100) NOT NULL, description TEXT, order_index INT DEFAULT 0, last_sync TIMESTAMP NULL, sync_status VARCHAR(20) DEFAULT 'synced', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS api_collections (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50), folder_id VARCHAR(50), name VARCHAR(100) NOT NULL, description TEXT, method VARCHAR(10) NOT NULL, path TEXT NOT NULL, url_params TEXT, headers TEXT, body_type VARCHAR(20) DEFAULT 'none', request_body TEXT, response_examples TEXT, version INT DEFAULT 1, last_sync TIMESTAMP NULL, sync_status VARCHAR(20) DEFAULT 'synced', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS rbac_users (id VARCHAR(50) PRIMARY KEY, email VARCHAR(100), token VARCHAR(100) UNIQUE NOT NULL, allowed_folders TEXT NOT NULL, project_id VARCHAR(50), role VARCHAR(20) DEFAULT 'viewer', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS sync_queue (id VARCHAR(50) PRIMARY KEY, local_id VARCHAR(50), table_name VARCHAR(50), operation VARCHAR(20), data TEXT NOT NULL, status VARCHAR(20) DEFAULT 'pending', retries INT DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+    `
+    const migrations = [
+        `ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_deployed_at TIMESTAMP NULL;`,
+        `ALTER TABLE projects ADD COLUMN IF NOT EXISTS proxy_url VARCHAR(500);`
+    ]
+    const statements = schema.trim().split(';').map(s => s.trim()).filter(Boolean)
+
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection({ uri: url, multipleStatements: true })
+            for (const s of statements) await conn.execute(s)
+            // Run migrations (ignoring errors if columns exist but ADD COLUMN IF NOT EXISTS isn't supported)
+            for (const m of migrations) {
+                try {
+                    await conn.execute(m.replace('IF NOT EXISTS', '')) // MySQL 8.0.19+ doesn't support IF NOT EXISTS in ALTER TABLE well in all envs, so we catch
+                } catch (e) { /* ignore */ }
+            }
+            await conn.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            for (const s of statements) await client.query(s)
+            // Run migrations
+            for (const m of migrations) {
+                try {
+                    await client.query(m)
+                } catch (e) { /* ignore */ }
+            }
+            await client.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol' }
+})
+
+ipcMain.handle('create-rbac-user', async (_event, url: string, user: { id: string, email: string, token: string, allowedFolders: string[], projectId: string, role: string }) => {
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection(url)
+            await conn.execute(
+                'INSERT INTO rbac_users (id, email, token, allowed_folders, project_id, role) VALUES (?, ?, ?, ?, ?, ?)',
+                [user.id, user.email, user.token, JSON.stringify(user.allowedFolders), user.projectId, user.role]
+            )
+            await conn.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            await client.query(
+                'INSERT INTO rbac_users (id, email, token, allowed_folders, project_id, role) VALUES ($1, $2, $3, $4, $5, $6)',
+                [user.id, user.email, user.token, JSON.stringify(user.allowedFolders), user.projectId, user.role]
+            )
+            await client.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol' }
+})
+
+ipcMain.handle('get-rbac-users', async (_event, url: string, projectId: string) => {
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection(url)
+            const [rows]: any = await conn.execute('SELECT * FROM rbac_users WHERE project_id = ?', [projectId])
+            await conn.end()
+            return { success: true, users: rows }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            const res = await client.query('SELECT * FROM rbac_users WHERE project_id = $1', [projectId])
+            await client.end()
+            return { success: true, users: res.rows }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol' }
+})
+
+ipcMain.handle('update-rbac-user', async (_event, url: string, user: { id: string, email: string, allowedFolders: any, role: string }) => {
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection(url)
+            await conn.execute(
+                'UPDATE rbac_users SET email = ?, allowed_folders = ?, role = ? WHERE id = ?',
+                [user.email, JSON.stringify(user.allowedFolders), user.role, user.id]
+            )
+            await conn.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            await client.query(
+                'UPDATE rbac_users SET email = $1, allowed_folders = $2, role = $3 WHERE id = $4',
+                [user.email, JSON.stringify(user.allowedFolders), user.role, user.id]
+            )
+            await client.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol' }
+})
+
+ipcMain.handle('delete-rbac-user', async (_event, url: string, userId: string) => {
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection(url)
+            await conn.execute('DELETE FROM rbac_users WHERE id = ?', [userId])
+            await conn.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            await client.query('DELETE FROM rbac_users WHERE id = $1', [userId])
+            await client.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol' }
+})
+
+ipcMain.handle('sync-direct', async (_event, url: string, entries: any[]) => {
+    const results: any[] = []
+
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection({ uri: url, multipleStatements: true })
+            for (const entry of entries) {
+                const { tableName, operation, data } = entry
+                const payload = typeof data === 'string' ? JSON.parse(data) : data
+                try {
+                    if (tableName === 'projects') {
+                        if (operation === 'update' || operation === 'create') {
+                            await conn.execute(
+                                'INSERT INTO projects (id, name, database_url, proxy_url, last_deployed_at) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = ?, database_url = ?, proxy_url = ?, last_deployed_at = ?',
+                                [
+                                    payload.id, payload.name, payload.databaseUrl || '', payload.proxyUrl || '', payload.lastDeployedAt ? new Date(payload.lastDeployedAt) : null,
+                                    payload.name, payload.databaseUrl || '', payload.proxyUrl || '', payload.lastDeployedAt ? new Date(payload.lastDeployedAt) : null
+                                ]
+                            )
+                        }
+                    } else if (tableName === 'folders') {
+                        if (operation === 'create' || operation === 'update') {
+                            await conn.execute(
+                                'INSERT INTO folders (id, project_id, name, description, order_index, sync_status) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name = ?, description = ?, order_index = ?, sync_status = ?',
+                                [payload.id, payload.projectId, payload.name, payload.description || '', payload.orderIndex || 0, 'synced', payload.name, payload.description || '', payload.orderIndex || 0, 'synced']
+                            )
+                        } else if (operation === 'delete') {
+                            await conn.execute('DELETE FROM api_collections WHERE folder_id = ?', [payload.id])
+                            await conn.execute('DELETE FROM folders WHERE id = ?', [payload.id])
+                        }
+                    } else if (tableName === 'apiCollections') {
+                        if (operation === 'create' || operation === 'update') {
+                            await conn.execute(
+                                `INSERT INTO api_collections (
+                                    id, project_id, folder_id, name, description, method, path, 
+                                    url_params, headers, body_type, request_body, response_examples, version, sync_status
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+                                ON DUPLICATE KEY UPDATE 
+                                    name=?, description=?, method=?, path=?, url_params=?, headers=?, 
+                                    body_type=?, request_body=?, response_examples=?, version=?, sync_status=?`,
+                                [
+                                    payload.id, payload.projectId, payload.folderId, payload.name, payload.description || '', payload.method, payload.path,
+                                    JSON.stringify(payload.urlParams || []), JSON.stringify(payload.headers || []),
+                                    payload.bodyType || 'none', JSON.stringify(payload.requestBody || ''),
+                                    JSON.stringify(payload.responseExamples || []), payload.version || 1, 'synced',
+                                    payload.name, payload.description || '', payload.method, payload.path,
+                                    JSON.stringify(payload.urlParams || []), JSON.stringify(payload.headers || []),
+                                    payload.bodyType || 'none', JSON.stringify(payload.requestBody || ''),
+                                    JSON.stringify(payload.responseExamples || []), payload.version || 1, 'synced'
+                                ]
+                            )
+                        } else if (operation === 'delete') {
+                            await conn.execute('DELETE FROM api_collections WHERE id = ?', [payload.id])
+                        }
+                    }
+                    results.push({ id: entry.id, status: 'synced' })
+                } catch (err: any) {
+                    results.push({ id: entry.id, status: 'failed', error: err.message })
+                }
+            }
+            await conn.end()
+            return { success: true, results }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            for (const entry of entries) {
+                const { tableName, operation, data } = entry
+                const payload = typeof data === 'string' ? JSON.parse(data) : data
+                const table = tableName === 'apiCollections' ? 'api_collections' : tableName
+                try {
+                    if (tableName === 'projects') {
+                        await client.query(
+                            'INSERT INTO projects (id, name, database_url, proxy_url, last_deployed_at) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET name = $2, database_url = $3, proxy_url = $4, last_deployed_at = $5',
+                            [payload.id, payload.name, payload.databaseUrl || '', payload.proxyUrl || '', payload.lastDeployedAt ? new Date(payload.lastDeployedAt) : null]
+                        )
+                    } else if (tableName === 'folders') {
+                        if (operation === 'create' || operation === 'update') {
+                            await client.query(
+                                'INSERT INTO folders (id, project_id, name, description, order_index, sync_status) VALUES ($1, $2, $3, $4, $5, $6) ON CONFLICT (id) DO UPDATE SET name=$3, description=$4, order_index=$5, sync_status=$6',
+                                [payload.id, payload.projectId, payload.name, payload.description || '', payload.orderIndex || 0, 'synced']
+                            )
+                        } else if (operation === 'delete') {
+                            await client.query('DELETE FROM api_collections WHERE folder_id = $1', [payload.id])
+                            await client.query('DELETE FROM folders WHERE id = $1', [payload.id])
+                        }
+                    } else if (tableName === 'apiCollections') {
+                        if (operation === 'create' || operation === 'update') {
+                            await client.query(
+                                `INSERT INTO api_collections (
+                                    id, project_id, folder_id, name, description, method, path, 
+                                    url_params, headers, body_type, request_body, response_examples, version, sync_status
+                                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
+                                ON CONFLICT (id) DO UPDATE SET 
+                                    name=$4, description=$5, method=$6, path=$7, url_params=$8, headers=$9, 
+                                    body_type=$10, request_body=$11, response_examples=$12, version=$13, sync_status=$14`,
+                                [
+                                    payload.id, payload.projectId, payload.folderId, payload.name, payload.description || '', payload.method, payload.path,
+                                    JSON.stringify(payload.urlParams || []), JSON.stringify(payload.headers || []),
+                                    payload.bodyType || 'none', JSON.stringify(payload.requestBody || ''),
+                                    JSON.stringify(payload.responseExamples || []), payload.version || 1, 'synced'
+                                ]
+                            )
+                        } else if (operation === 'delete') {
+                            await client.query('DELETE FROM api_collections WHERE id = $1', [payload.id])
+                        }
+                    }
+                    results.push({ id: entry.id, status: 'synced' })
+                } catch (err: any) {
+                    results.push({ id: entry.id, status: 'failed', error: err.message })
+                }
+            }
+            await client.end()
+            return { success: true, results }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol' }
+})
+
+ipcMain.handle('fetch-remote-data', async (_event, url: string, projectId: string) => {
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection(url)
+            const [folders]: any = await conn.execute('SELECT * FROM folders WHERE project_id = ?', [projectId])
+            const [apis]: any = await conn.execute('SELECT * FROM api_collections WHERE project_id = ?', [projectId])
+            await conn.end()
+            return { success: true, folders, apis }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            const foldersRes = await client.query('SELECT * FROM folders WHERE project_id = $1', [projectId])
+            const apisRes = await client.query('SELECT * FROM api_collections WHERE project_id = $1', [projectId])
+            await client.end()
+            return { success: true, folders: foldersRes.rows, apis: apisRes.rows }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol' }
+})
+
+ipcMain.handle('get-remote-projects', async (_event, url: string) => {
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection(url)
+            const [rows]: any = await conn.execute('SELECT id, name, created_at FROM projects ORDER BY created_at DESC')
+            await conn.end()
+            return { success: true, projects: rows }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            const res = await client.query('SELECT id, name, created_at FROM projects ORDER BY created_at DESC')
+            await client.end()
+            return { success: true, projects: res.rows }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol' }
+})
+
+ipcMain.handle('delete-remote-project', async (_event, url: string, projectId: string) => {
+    if (url.startsWith('mysql://')) {
+        try {
+            const conn = await mysql.createConnection(url)
+            await conn.execute('DELETE FROM api_collections WHERE project_id = ?', [projectId])
+            await conn.execute('DELETE FROM folders WHERE project_id = ?', [projectId])
+            await conn.execute('DELETE FROM rbac_users WHERE project_id = ?', [projectId])
+            await conn.execute('DELETE FROM projects WHERE id = ?', [projectId])
+            await conn.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
+        try {
+            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            await client.connect()
+            await client.query('DELETE FROM api_collections WHERE project_id = $1', [projectId])
+            await client.query('DELETE FROM folders WHERE project_id = $1', [projectId])
+            await client.query('DELETE FROM rbac_users WHERE project_id = $1', [projectId])
+            await client.query('DELETE FROM projects WHERE id = $1', [projectId])
+            await client.end()
+            return { success: true }
+        } catch (err: any) {
+            return { success: false, error: err.message }
+        }
+    }
+    return { success: false, error: 'Unsupported protocol' }
+})
+
+ipcMain.handle('deploy-to-vercel', async (_event, params: { databaseUrl: string, adminToken?: string, projectId: string, projectName: string }) => {
+    const projectRoot = app.isPackaged ? process.resourcesPath : app.getAppPath()
+    const serverPath = join(projectRoot, 'server')
+
+    // Sanitize project name for Vercel (lowercase, alphanumeric and hyphens only)
+    const sanitizedName = params.projectName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+
+    // Create a unique project name: api-doc-[name]-[short-id]
+    const shortId = params.projectId.split('-')[0]
+    const vercelProjectName = `api-doc-${sanitizedName || 'project'}-${shortId}`
+
+    const runVercelCommand = (command: string, stdinValue?: string) => {
+        return new Promise<{ success: boolean; error?: string; output?: string }>((resolve) => {
+            mainWindow?.webContents.send('deploy-output', `\n> Executing: ${command}\n`)
+
+            const shell = process.platform === 'win32' ? 'cmd' : 'sh'
+            const args = process.platform === 'win32' ? ['/c', command] : ['-c', command]
+
+            const child = spawn(shell, args, { cwd: serverPath })
+            let fullOutput = ''
+
+            if (stdinValue) {
+                child.stdin.write(stdinValue + '\n')
+                child.stdin.end()
+            }
+
+            child.stdout.on('data', (data) => {
+                const s = data.toString()
+                fullOutput += s
+                mainWindow?.webContents.send('deploy-output', s)
+            })
+
+            child.stderr.on('data', (data) => {
+                const s = data.toString()
+                fullOutput += s
+                mainWindow?.webContents.send('deploy-output', s)
+            })
+
+            child.on('close', (code) => {
+                if (code === 0) resolve({ success: true, output: fullOutput })
+                else resolve({ success: false, error: `Exited with code ${code}`, output: fullOutput })
+            })
+
+            child.on('error', (err) => resolve({ success: false, error: err.message, output: fullOutput }))
+        })
+    }
+
+    try {
+        // 0. Ensure linked to a UNIQUE project name
+        // This creates/links the Vercel project with a name unique to THIS local project
+        await runVercelCommand(`npx vercel link --project ${vercelProjectName} --yes`)
+
+        // 1. Set DATABASE_URL
+        const resDb = await runVercelCommand(`npx vercel env add DATABASE_URL production`, params.databaseUrl)
+        if (!resDb.success) {
+            mainWindow?.webContents.send('deploy-output', `Note: Proceeding even if env var exists or failed to set.\n`)
+        }
+
+        // 2. Set ADMIN_TOKEN if provided
+        if (params.adminToken) {
+            const resAdmin = await runVercelCommand(`npx vercel env add ADMIN_TOKEN production`, params.adminToken)
+            if (!resAdmin.success) {
+                mainWindow?.webContents.send('deploy-output', `Note: Proceeding even if env var exists or failed to set.\n`)
+            }
+        }
+
+        // 3. Final Production Deployment
+        const resDeploy = await runVercelCommand(`npx vercel --prod --yes`)
+
+        if (resDeploy.success && resDeploy.output) {
+            const lines = resDeploy.output.split('\n')
+            let url = ''
+
+            for (const line of lines) {
+                const prodMatch = line.match(/Production:\s*(https:\/\/\S+)/i)
+                const aliasMatch = line.match(/Aliased:\s*(https:\/\/\S+)/i)
+                if (aliasMatch) url = aliasMatch[1]
+                else if (prodMatch && !url) url = prodMatch[1]
+            }
+
+            if (url) {
+                return { success: true, url }
+            }
+        }
+
+        return resDeploy
+    } catch (err: any) {
+        return { success: false, error: err.message }
+    }
+})
+
+ipcMain.handle('delete-vercel-project', async (_event, params: { projectId: string, projectName: string }) => {
+    const projectRoot = app.isPackaged ? process.resourcesPath : app.getAppPath()
+    const serverPath = join(projectRoot, 'server')
+
+    const sanitizedName = params.projectName
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+
+    const shortId = params.projectId.split('-')[0]
+    const vercelProjectName = `api-doc-${sanitizedName || 'project'}-${shortId}`
+
+    return new Promise((resolve) => {
+        const shell = process.platform === 'win32' ? 'cmd' : 'sh'
+        const command = `npx vercel project rm ${vercelProjectName}`
+        const args = process.platform === 'win32' ? ['/c', command] : ['-c', command]
+
+        const child = spawn(shell, args, { cwd: serverPath })
+        let output = ''
+
+        // Send 'y' to confirm the deletion if prompted
+        child.stdin.write('y\n')
+        child.stdin.end()
+
+        child.stdout.on('data', (data) => { output += data.toString() })
+        child.stderr.on('data', (data) => { output += data.toString() })
+
+        child.on('close', (code) => {
+            if (code === 0) resolve({ success: true, output })
+            else resolve({ success: false, error: `Exited with code ${code}`, output })
+        })
+
+        child.on('error', (err) => resolve({ success: false, error: err.message, output }))
+    })
+})
+
+// Auto-Updater Configuration
+autoUpdater.on('update-available', () => {
+    console.log('[Updater] Update available')
+})
+
+autoUpdater.on('update-downloaded', () => {
+    console.log('[Updater] Update downloaded; will install on quit')
+    autoUpdater.quitAndInstall()
+})
+
+autoUpdater.on('error', (err) => {
+    console.error('[Updater] Error:', err)
+})
+
+app.whenReady().then(() => {
+    // Check for updates on startup
+    if (!is.dev) {
+        autoUpdater.checkForUpdatesAndNotify()
+    }
+
+    createWindow()
+
+    app.on('activate', () => {
+        if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+})
+
+app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+        app.quit()
+    }
+})

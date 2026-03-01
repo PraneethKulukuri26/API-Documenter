@@ -1,0 +1,43 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Build Assets
+        run: npm run build
+
+      - name: Build and Publish Electron App
+        uses: samuelmeuli/action-electron-builder@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish: always
+          # On macOS, code signing is required for auto-updates.
+          # For Windows, it's highly recommended.
+          # Set these secrets in GitHub if you have certificates:
+          # macos_certs: ${{ secrets.MACOS_CERTS }}
+          # macos_certs_password: ${{ secrets.MACOS_CERTS_PASSWORD }}

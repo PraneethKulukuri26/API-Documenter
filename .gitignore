@@ -1,0 +1,14 @@
+node_modules
+out
+dist
+*.log
+.DS_Store
+Thumbs.db
+.env*
+.vercel
+.vscode
+.idea
+.agent
+.agents
+_agent
+_agents

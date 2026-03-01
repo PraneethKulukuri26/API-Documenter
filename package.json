@@ -1,0 +1,71 @@
+{
+  "name": "api-documenter",
+  "version": "1.0.0",
+  "description": "Self-hosted Postman alternative with folder-level RBAC and offline-first documentation",
+  "main": "./out/main/index.js",
+  "author": "Praneeth Kulukuri",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "start": "electron-vite preview",
+    "postinstall": "electron-builder install-app-deps",
+    "build:win": "npm run build && npx electron-builder build --win --publish never",
+    "build:mac": "npm run build && npx electron-builder build --mac --publish never"
+  },
+  "dependencies": {
+    "@electron-toolkit/preload": "^3.0.2",
+    "@electron-toolkit/utils": "^4.0.0",
+    "@tanstack/react-query": "^5.62.0",
+    "dexie": "^4.0.10",
+    "dexie-react-hooks": "^1.1.7",
+    "electron-store": "^10.0.0",
+    "electron-updater": "^6.8.3",
+    "mysql2": "^3.18.1",
+    "pg": "^8.19.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "uuid": "^11.0.3",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/node": "^25.3.0",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^2.3.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0"
+  },
+  "build": {
+    "appId": "com.apidocumenter.app",
+    "productName": "API Documenter",
+    "directories": {
+      "output": "dist"
+    },
+    "icon": "resources/icon.jpg",
+    "win": {
+      "target": "nsis",
+      "icon": "resources/icon.jpg"
+    },
+    "mac": {
+      "target": "dmg",
+      "icon": "resources/icon.png"
+    },
+    "linux": {
+      "target": "AppImage",
+      "icon": "resources/icon.png"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "PraneethKulukuri26",
+      "repo": "API-Documenter"
+    }
+  }
+}

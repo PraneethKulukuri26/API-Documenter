@@ -1,0 +1,30 @@
+{
+    "compilerOptions": {
+        "composite": true,
+        "jsx": "react-jsx",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "baseUrl": ".",
+        "paths": {
+            "@/*": [
+                "src/renderer/src/*"
+            ]
+        },
+        "allowSyntheticDefaultImports": true,
+        "esModuleInterop": true,
+        "outDir": "./out",
+        "resolveJsonModule": true,
+        "skipLibCheck": true,
+        "strict": true,
+        "target": "ESNext",
+        "lib": [
+            "ESNext",
+            "DOM",
+            "DOM.Iterable"
+        ]
+    },
+    "include": [
+        "src/renderer/src/**/*",
+        "src/renderer/src/env.d.ts"
+    ]
+}
