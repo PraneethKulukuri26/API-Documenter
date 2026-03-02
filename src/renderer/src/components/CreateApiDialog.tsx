@@ -19,12 +19,18 @@ export function CreateApiDialog() {
 
     const close = () => setShowCreateApi(false)
     const submit = async () => {
-        if (!name.trim() || !path.trim() || !currentProjectId || !currentFolderId) return
-        const a = await create.mutateAsync({ projectId: currentProjectId, folderId: currentFolderId, name: name.trim(), method, path: path.trim() })
+        if (!name.trim() || !currentProjectId || !currentFolderId) return
+        const a = await create.mutateAsync({
+            projectId: currentProjectId,
+            folderId: currentFolderId,
+            name: name.trim(),
+            method,
+            path: path.trim()
+        })
         selectApi(a.id); close()
     }
 
-    const canSubmit = !!name.trim() && !!path.trim()
+    const canSubmit = !!name.trim()
 
     return (
         <div
@@ -114,7 +120,7 @@ export function CreateApiDialog() {
                         <label
                             style={{ display: 'block', fontSize: '12px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#6B7280', marginBottom: '6px' }}
                         >
-                            Path <span style={{ color: '#FFFFFF' }}>*</span>
+                            Path
                         </label>
                         <input value={path} onChange={e => setPath(e.target.value)} placeholder="/auth/login"
                             onKeyDown={e => e.key === 'Enter' && submit()}
