@@ -520,7 +520,7 @@ export function RbacSettingsDialog() {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
                                 <SuccessField label="User ID" value={successData.id} />
                                 <SuccessField label="Email" value={successData.email} />
                             </div>

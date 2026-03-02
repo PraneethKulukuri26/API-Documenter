@@ -91,54 +91,31 @@ export function DatabaseSettingsDialog() {
                         </p>
                     </div>
 
-                    {/* Action Buttons Grid */}
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                    {/* Action Buttons Group */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                         <button
                             onClick={handleTest}
                             disabled={testing || !dbUrl}
-                            className="bg-white text-black text-[14px] font-bold rounded-xl hover:bg-neutral-100 disabled:opacity-20 transition-all shadow-lg active:scale-[0.98]"
+                            className={`bg-white text-black text-[14px] font-bold rounded-xl transition-all shadow-lg active:scale-[0.98] ${testing || !dbUrl ? 'opacity-20' : 'hover:bg-neutral-100'}`}
                             style={{ padding: '16px' }}
                         >
                             {testing ? 'Verifying...' : 'Test Connection'}
                         </button>
-                        <button
-                            onClick={handleCreateTables}
-                            disabled={testing || !dbUrl}
-                            className="border border-white/10 text-white text-[14px] font-bold rounded-xl hover:bg-white/5 disabled:opacity-20 transition-all active:scale-[0.98]"
-                            style={{ padding: '16px' }}
-                        >
-                            Initialize Schema
-                        </button>
-                    </div>
 
-                    {/* Conditional Sync Button */}
-                    {project?.databaseUrl && project.databaseUrl.trim() !== '' && (
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <button
-                                onClick={async () => {
-                                    if (!project) return
-                                    await triggerFullProjectSync(qc, project)
-                                    alert('Sync completed successfully!')
-                                }}
-                                className="bg-blue-600/10 border border-blue-600/20 text-blue-400 text-[14px] font-bold rounded-xl hover:bg-blue-600/20 transition-all active:scale-[0.98]"
-                                style={{ width: '100%', padding: '16px' }}
-                            >
-                                Trigger Full Data Sync
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Commit Button */}
-                    <div style={{ marginTop: '-8px' }}>
                         <button
-                            onClick={() => {
-                                updateProject.mutate({ id: currentProjectId!, databaseUrl: dbUrl.trim() })
+                            onClick={async () => {
+                                if (dbUrl !== project?.databaseUrl) {
+                                    // If URL changed but not tested/saved yet
+                                    await handleTest()
+                                }
+                                await handleCreateTables()
                                 setShowDatabaseSettings(false)
                             }}
-                            className="bg-emerald-600/10 border border-emerald-600/20 text-emerald-400 text-[15px] font-bold rounded-xl hover:bg-emerald-600/20 transition-all shadow-lg active:scale-[0.98]"
-                            style={{ width: '100%', padding: '16px' }}
+                            disabled={testing || !dbUrl}
+                            className={`bg-blue-600/10 border border-blue-600/20 text-blue-400 text-[14px] font-bold rounded-xl transition-all active:scale-[0.98] ${testing || !dbUrl ? 'opacity-20' : 'hover:bg-blue-600/20'}`}
+                            style={{ padding: '16px' }}
                         >
-                            Commit Changes & Close
+                            {project?.databaseUrl === dbUrl && dbUrl ? 'Sync Now' : 'Connect & Sync'}
                         </button>
                     </div>
 

@@ -137,7 +137,7 @@ ipcMain.handle('send-http-request', async (_event, opts: {
 ipcMain.handle('test-db-connection', async (_event, url: string) => {
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection(url)
+            const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             await conn.ping()
             await conn.end()
             return { success: true }
@@ -146,7 +146,7 @@ ipcMain.handle('test-db-connection', async (_event, url: string) => {
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             await client.end()
             return { success: true }
@@ -173,7 +173,7 @@ ipcMain.handle('create-remote-tables', async (_event, url: string) => {
 
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection({ uri: url, multipleStatements: true })
+            const conn = await mysql.createConnection({ uri: url, multipleStatements: true, connectTimeout: 10000 })
             for (const s of statements) await conn.execute(s)
             // Run migrations (ignoring errors if columns exist but ADD COLUMN IF NOT EXISTS isn't supported)
             for (const m of migrations) {
@@ -188,7 +188,7 @@ ipcMain.handle('create-remote-tables', async (_event, url: string) => {
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             for (const s of statements) await client.query(s)
             // Run migrations
@@ -209,7 +209,7 @@ ipcMain.handle('create-remote-tables', async (_event, url: string) => {
 ipcMain.handle('create-rbac-user', async (_event, url: string, user: { id: string, email: string, token: string, allowedFolders: string[], projectId: string, role: string }) => {
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection(url)
+            const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             await conn.execute(
                 'INSERT INTO rbac_users (id, email, token, allowed_folders, project_id, role) VALUES (?, ?, ?, ?, ?, ?)',
                 [user.id, user.email, user.token, JSON.stringify(user.allowedFolders), user.projectId, user.role]
@@ -221,7 +221,7 @@ ipcMain.handle('create-rbac-user', async (_event, url: string, user: { id: strin
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             await client.query(
                 'INSERT INTO rbac_users (id, email, token, allowed_folders, project_id, role) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -239,7 +239,7 @@ ipcMain.handle('create-rbac-user', async (_event, url: string, user: { id: strin
 ipcMain.handle('get-rbac-users', async (_event, url: string, projectId: string) => {
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection(url)
+            const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             const [rows]: any = await conn.execute('SELECT * FROM rbac_users WHERE project_id = ?', [projectId])
             await conn.end()
             return { success: true, users: rows }
@@ -248,7 +248,7 @@ ipcMain.handle('get-rbac-users', async (_event, url: string, projectId: string) 
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             const res = await client.query('SELECT * FROM rbac_users WHERE project_id = $1', [projectId])
             await client.end()
@@ -263,7 +263,7 @@ ipcMain.handle('get-rbac-users', async (_event, url: string, projectId: string) 
 ipcMain.handle('update-rbac-user', async (_event, url: string, user: { id: string, email: string, allowedFolders: any, role: string }) => {
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection(url)
+            const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             await conn.execute(
                 'UPDATE rbac_users SET email = ?, allowed_folders = ?, role = ? WHERE id = ?',
                 [user.email, JSON.stringify(user.allowedFolders), user.role, user.id]
@@ -275,7 +275,7 @@ ipcMain.handle('update-rbac-user', async (_event, url: string, user: { id: strin
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             await client.query(
                 'UPDATE rbac_users SET email = $1, allowed_folders = $2, role = $3 WHERE id = $4',
@@ -293,7 +293,7 @@ ipcMain.handle('update-rbac-user', async (_event, url: string, user: { id: strin
 ipcMain.handle('delete-rbac-user', async (_event, url: string, userId: string) => {
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection(url)
+            const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             await conn.execute('DELETE FROM rbac_users WHERE id = ?', [userId])
             await conn.end()
             return { success: true }
@@ -302,7 +302,7 @@ ipcMain.handle('delete-rbac-user', async (_event, url: string, userId: string) =
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             await client.query('DELETE FROM rbac_users WHERE id = $1', [userId])
             await client.end()
@@ -319,7 +319,7 @@ ipcMain.handle('sync-direct', async (_event, url: string, entries: any[]) => {
 
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection({ uri: url, multipleStatements: true })
+            const conn = await mysql.createConnection({ uri: url, multipleStatements: true, connectTimeout: 10000 })
             for (const entry of entries) {
                 const { tableName, operation, data } = entry
                 const payload = typeof data === 'string' ? JSON.parse(data) : data
@@ -381,7 +381,7 @@ ipcMain.handle('sync-direct', async (_event, url: string, entries: any[]) => {
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             for (const entry of entries) {
                 const { tableName, operation, data } = entry
@@ -441,7 +441,7 @@ ipcMain.handle('sync-direct', async (_event, url: string, entries: any[]) => {
 ipcMain.handle('fetch-remote-data', async (_event, url: string, projectId: string) => {
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection(url)
+            const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             const [folders]: any = await conn.execute('SELECT * FROM folders WHERE project_id = ?', [projectId])
             const [apis]: any = await conn.execute('SELECT * FROM api_collections WHERE project_id = ?', [projectId])
             await conn.end()
@@ -451,7 +451,7 @@ ipcMain.handle('fetch-remote-data', async (_event, url: string, projectId: strin
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             const foldersRes = await client.query('SELECT * FROM folders WHERE project_id = $1', [projectId])
             const apisRes = await client.query('SELECT * FROM api_collections WHERE project_id = $1', [projectId])
@@ -467,7 +467,7 @@ ipcMain.handle('fetch-remote-data', async (_event, url: string, projectId: strin
 ipcMain.handle('get-remote-projects', async (_event, url: string) => {
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection(url)
+            const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             const [rows]: any = await conn.execute('SELECT id, name, created_at FROM projects ORDER BY created_at DESC')
             await conn.end()
             return { success: true, projects: rows }
@@ -476,7 +476,7 @@ ipcMain.handle('get-remote-projects', async (_event, url: string) => {
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             const res = await client.query('SELECT id, name, created_at FROM projects ORDER BY created_at DESC')
             await client.end()
@@ -491,7 +491,7 @@ ipcMain.handle('get-remote-projects', async (_event, url: string) => {
 ipcMain.handle('delete-remote-project', async (_event, url: string, projectId: string) => {
     if (url.startsWith('mysql://')) {
         try {
-            const conn = await mysql.createConnection(url)
+            const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             await conn.execute('DELETE FROM api_collections WHERE project_id = ?', [projectId])
             await conn.execute('DELETE FROM folders WHERE project_id = ?', [projectId])
             await conn.execute('DELETE FROM rbac_users WHERE project_id = ?', [projectId])
@@ -503,7 +503,7 @@ ipcMain.handle('delete-remote-project', async (_event, url: string, projectId: s
         }
     } else if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
         try {
-            const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } })
+            const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             await client.query('DELETE FROM api_collections WHERE project_id = $1', [projectId])
             await client.query('DELETE FROM folders WHERE project_id = $1', [projectId])
