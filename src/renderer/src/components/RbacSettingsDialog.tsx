@@ -486,14 +486,48 @@ export function RbacSettingsDialog() {
 
                         {/* Body */}
                         <div style={{ padding: '32px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
-                            <SuccessField label="User ID" value={successData.id} />
-                            <SuccessField label="Email Address" value={successData.email} />
-                            <SuccessField label="Assigned Role" value={successData.role} isBadge />
-                            <SuccessField label="Access Token" value={successData.token} isSecret />
+                            <div style={{ padding: '20px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <span style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em', color: '#71717A' }}>Complete Invitation Package</span>
+                                    <button
+                                        onClick={() => {
+                                            const text = `Proxy URL: ${project?.proxyUrl}\nProject ID: ${currentProjectId}\nAccess Token: ${successData.token}`;
+                                            navigator.clipboard.writeText(text);
+                                            alert('Copied all credentials to clipboard!');
+                                        }}
+                                        style={{
+                                            padding: '6px 12px', background: '#22c55e', color: 'white', fontSize: '11px', fontWeight: 700,
+                                            borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px'
+                                        }}
+                                    >
+                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5" /></svg>
+                                        Copy All
+                                    </button>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ display: 'flex', gap: '8px', fontSize: '13px' }}>
+                                        <span style={{ color: '#52525B', fontWeight: 600 }}>Proxy URL:</span>
+                                        <span style={{ color: '#A1A1AA', wordBreak: 'break-all' }}>{project?.proxyUrl}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', fontSize: '13px' }}>
+                                        <span style={{ color: '#52525B', fontWeight: 600 }}>Project ID:</span>
+                                        <span style={{ color: '#A1A1AA' }}>{currentProjectId}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', fontSize: '13px' }}>
+                                        <span style={{ color: '#52525B', fontWeight: 600 }}>Token:</span>
+                                        <span style={{ color: '#FDE68A', fontFamily: 'monospace' }}>{successData.token}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                <SuccessField label="User ID" value={successData.id} />
+                                <SuccessField label="Email" value={successData.email} />
+                            </div>
 
                             <div style={{ padding: '16px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.1)', borderRadius: '12px' }}>
                                 <p style={{ fontSize: '12px', color: 'rgba(245,158,11,0.8)', lineHeight: 1.6, margin: 0 }}>
-                                    <span style={{ fontWeight: 700 }}>Important:</span> The access token will never be shown again. Ensure the user saves it securely.
+                                    <span style={{ fontWeight: 700 }}>Note:</span> This information is only shown once. Ensure the user saves it securely.
                                 </p>
                             </div>
                         </div>
