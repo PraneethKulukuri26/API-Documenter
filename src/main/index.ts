@@ -586,34 +586,42 @@ ipcMain.handle('deploy-to-vercel', async (_event, params: { databaseUrl: string,
     try {
         // 0. Ensure linked to a UNIQUE project name
         // This creates/links the Vercel project with a name unique to THIS local project
-        await runVercelCommand(`npx vercel link --project ${vercelProjectName} --yes`)
+        await runVercelCommand(`npx vercel@latest link --project ${vercelProjectName} --yes`)
 
         // 1. Set DATABASE_URL
-        const resDb = await runVercelCommand(`npx vercel env add DATABASE_URL production`, params.databaseUrl)
+        const resDb = await runVercelCommand(`npx vercel@latest env add DATABASE_URL production`, params.databaseUrl)
         if (!resDb.success) {
             mainWindow?.webContents.send('deploy-output', `Note: Proceeding even if env var exists or failed to set.\n`)
         }
 
         // 2. Set ADMIN_TOKEN if provided
         if (params.adminToken) {
-            const resAdmin = await runVercelCommand(`npx vercel env add ADMIN_TOKEN production`, params.adminToken)
+            const resAdmin = await runVercelCommand(`npx vercel@latest env add ADMIN_TOKEN production`, params.adminToken)
             if (!resAdmin.success) {
                 mainWindow?.webContents.send('deploy-output', `Note: Proceeding even if env var exists or failed to set.\n`)
             }
         }
 
         // 3. Final Production Deployment
-        const resDeploy = await runVercelCommand(`npx vercel --prod --yes`)
+        const resDeploy = await runVercelCommand(`npx vercel@latest --prod --yes`)
 
         if (resDeploy.success && resDeploy.output) {
             const lines = resDeploy.output.split('\n')
             let url = ''
 
             for (const line of lines) {
-                const prodMatch = line.match(/Production:\s*(https:\/\/\S+)/i)
+                // Look for Aliased URL (preferred clean domain)
                 const aliasMatch = line.match(/Aliased:\s*(https:\/\/\S+)/i)
-                if (aliasMatch) url = aliasMatch[1]
-                else if (prodMatch && !url) url = prodMatch[1]
+                if (aliasMatch) {
+                    url = aliasMatch[1]
+                    continue
+                }
+
+                // Look for Production URL (backup if alias not found yet)
+                const prodMatch = line.match(/Production:\s*(https:\/\/\S+)/i)
+                if (prodMatch && !url) {
+                    url = prodMatch[1]
+                }
             }
 
             if (url) {
@@ -642,7 +650,7 @@ ipcMain.handle('delete-vercel-project', async (_event, params: { projectId: stri
 
     return new Promise((resolve) => {
         const shell = process.platform === 'win32' ? 'cmd' : 'sh'
-        const command = `npx vercel project rm ${vercelProjectName}`
+        const command = `npx vercel@latest project rm ${vercelProjectName}`
         const args = process.platform === 'win32' ? ['/c', command] : ['-c', command]
 
         const child = spawn(shell, args, { cwd: serverPath })
