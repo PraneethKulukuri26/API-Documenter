@@ -522,6 +522,14 @@ ipcMain.handle('deploy-to-vercel', async (_event, params: { databaseUrl: string,
     const projectRoot = app.isPackaged ? process.resourcesPath : app.getAppPath()
     const serverPath = join(projectRoot, 'server')
 
+    if (!fs.existsSync(serverPath)) {
+        console.error('[Deploy] Server path not found:', serverPath)
+        return {
+            success: false,
+            error: `Deployment folder not found. If you are using the packaged app, please ensure the 'server' folder exists in the resources directory.`
+        }
+    }
+
     // Sanitize project name for Vercel (lowercase, alphanumeric and hyphens only)
     const sanitizedName = params.projectName
         .toLowerCase()
@@ -565,7 +573,13 @@ ipcMain.handle('deploy-to-vercel', async (_event, params: { databaseUrl: string,
                 else resolve({ success: false, error: `Exited with code ${code}`, output: fullOutput })
             })
 
-            child.on('error', (err) => resolve({ success: false, error: err.message, output: fullOutput }))
+            child.on('error', (err: any) => {
+                let errorMessage = err.message
+                if (err.code === 'ENOENT') {
+                    errorMessage = `Deployment failed: System command not found. Please ensure Node.js and NPX are installed on this computer.`
+                }
+                resolve({ success: false, error: errorMessage, output: fullOutput })
+            })
         })
     }
 

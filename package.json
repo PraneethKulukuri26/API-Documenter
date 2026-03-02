@@ -1,6 +1,6 @@
 {
   "name": "api-documenter",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "Self-hosted Postman alternative with folder-level RBAC and offline-first documentation",
   "main": "./out/main/index.js",
   "author": "Praneeth Kulukuri",
@@ -66,6 +66,17 @@
       "provider": "github",
       "owner": "PraneethKulukuri26",
       "repo": "API-Documenter"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "server",
+        "to": "server",
+        "filter": [
+          "**/*",
+          "!node_modules",
+          "!.vercel"
+        ]
+      }
+    ]
   }
 }
