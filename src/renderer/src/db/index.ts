@@ -1,5 +1,5 @@
 import Dexie, { type EntityTable } from 'dexie'
-import type { Project, Folder, ApiCollection, SyncQueueItem, SavedTeamConnection } from '@/types'
+import type { Project, Folder, ApiCollection, SyncQueueItem, SavedTeamConnection, Environment } from '@/types'
 
 class ApiDocumenterDB extends Dexie {
     projects!: EntityTable<Project, 'id'>
@@ -7,6 +7,7 @@ class ApiDocumenterDB extends Dexie {
     apiCollections!: EntityTable<ApiCollection, 'id'>
     syncQueue!: EntityTable<SyncQueueItem, 'id'>
     teamConnections!: EntityTable<SavedTeamConnection, 'id'>
+    environments!: EntityTable<Environment, 'id'>
 
     constructor() {
         super('ApiDocumenterDB')
@@ -25,13 +26,15 @@ class ApiDocumenterDB extends Dexie {
             syncQueue: 'id, localId, projectId, tableName, status, createdAt'
         })
 
-        this.version(3).stores({
+        this.version(4).stores({
             projects: 'id, name, createdAt',
             folders: 'id, projectId, name, orderIndex, syncStatus, createdAt',
             apiCollections: 'id, projectId, folderId, name, method, syncStatus, createdAt',
             syncQueue: 'id, localId, projectId, tableName, status, createdAt',
-            teamConnections: 'id, name, url, projectId, lastUsedAt'
+            teamConnections: 'id, name, url, projectId, lastUsedAt',
+            environments: 'id, projectId, folderId, name, isGlobal, syncStatus, createdAt'
         })
+
     }
 }
 

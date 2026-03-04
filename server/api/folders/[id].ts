@@ -24,7 +24,6 @@ export default async function handler(req: any, res: any) {
     const id = url.pathname.split('/').pop();
 
     if (!id) {
-        await db.close();
         return res.status(400).json({ error: 'Folder ID is required' });
     }
 
@@ -76,7 +75,5 @@ export default async function handler(req: any, res: any) {
         return res.status(405).json({ error: 'Method not allowed' });
     } catch (err: any) {
         return res.status(500).json({ error: err.message });
-    } finally {
-        await db.close();
     }
 }

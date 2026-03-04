@@ -163,11 +163,13 @@ ipcMain.handle('create-remote-tables', async (_event, url: string) => {
         CREATE TABLE IF NOT EXISTS folders (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50), name VARCHAR(100) NOT NULL, description TEXT, order_index INT DEFAULT 0, last_sync TIMESTAMP NULL, sync_status VARCHAR(20) DEFAULT 'synced', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS api_collections (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50), folder_id VARCHAR(50), name VARCHAR(100) NOT NULL, description TEXT, method VARCHAR(10) NOT NULL, path TEXT NOT NULL, url_params TEXT, headers TEXT, body_type VARCHAR(20) DEFAULT 'none', request_body TEXT, response_examples TEXT, version INT DEFAULT 1, last_sync TIMESTAMP NULL, sync_status VARCHAR(20) DEFAULT 'synced', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS rbac_users (id VARCHAR(50) PRIMARY KEY, email VARCHAR(100), token VARCHAR(100) UNIQUE NOT NULL, allowed_folders TEXT NOT NULL, project_id VARCHAR(50), role VARCHAR(20) DEFAULT 'viewer', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS environments (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50), folder_id VARCHAR(50), name VARCHAR(100) NOT NULL, base_url TEXT, is_global BOOLEAN DEFAULT FALSE, variables TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS sync_queue (id VARCHAR(50) PRIMARY KEY, local_id VARCHAR(50), table_name VARCHAR(50), operation VARCHAR(20), data TEXT NOT NULL, status VARCHAR(20) DEFAULT 'pending', retries INT DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
     `
     const migrations = [
         `ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_deployed_at TIMESTAMP NULL;`,
-        `ALTER TABLE projects ADD COLUMN IF NOT EXISTS proxy_url VARCHAR(500);`
+        `ALTER TABLE projects ADD COLUMN IF NOT EXISTS proxy_url VARCHAR(500);`,
+        `ALTER TABLE rbac_users ADD COLUMN IF NOT EXISTS allowed_environments TEXT;`
     ]
     const statements = schema.trim().split(';').map(s => s.trim()).filter(Boolean)
 
@@ -206,13 +208,13 @@ ipcMain.handle('create-remote-tables', async (_event, url: string) => {
     return { success: false, error: 'Unsupported protocol' }
 })
 
-ipcMain.handle('create-rbac-user', async (_event, url: string, user: { id: string, email: string, token: string, allowedFolders: string[], projectId: string, role: string }) => {
+ipcMain.handle('create-rbac-user', async (_event, url: string, user: { id: string, email: string, token: string, allowedFolders: any, allowedEnvironments: any, projectId: string, role: string }) => {
     if (url.startsWith('mysql://')) {
         try {
             const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             await conn.execute(
-                'INSERT INTO rbac_users (id, email, token, allowed_folders, project_id, role) VALUES (?, ?, ?, ?, ?, ?)',
-                [user.id, user.email, user.token, JSON.stringify(user.allowedFolders), user.projectId, user.role]
+                'INSERT INTO rbac_users (id, email, token, allowed_folders, allowed_environments, project_id, role) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                [user.id, user.email, user.token, JSON.stringify(user.allowedFolders), JSON.stringify(user.allowedEnvironments || []), user.projectId, user.role]
             )
             await conn.end()
             return { success: true }
@@ -224,8 +226,8 @@ ipcMain.handle('create-rbac-user', async (_event, url: string, user: { id: strin
             const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             await client.query(
-                'INSERT INTO rbac_users (id, email, token, allowed_folders, project_id, role) VALUES ($1, $2, $3, $4, $5, $6)',
-                [user.id, user.email, user.token, JSON.stringify(user.allowedFolders), user.projectId, user.role]
+                'INSERT INTO rbac_users (id, email, token, allowed_folders, allowed_environments, project_id, role) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+                [user.id, user.email, user.token, JSON.stringify(user.allowedFolders), JSON.stringify(user.allowedEnvironments || []), user.projectId, user.role]
             )
             await client.end()
             return { success: true }
@@ -260,13 +262,13 @@ ipcMain.handle('get-rbac-users', async (_event, url: string, projectId: string) 
     return { success: false, error: 'Unsupported protocol' }
 })
 
-ipcMain.handle('update-rbac-user', async (_event, url: string, user: { id: string, email: string, allowedFolders: any, role: string }) => {
+ipcMain.handle('update-rbac-user', async (_event, url: string, user: { id: string, email: string, allowedFolders: any, allowedEnvironments: any, role: string }) => {
     if (url.startsWith('mysql://')) {
         try {
             const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             await conn.execute(
-                'UPDATE rbac_users SET email = ?, allowed_folders = ?, role = ? WHERE id = ?',
-                [user.email, JSON.stringify(user.allowedFolders), user.role, user.id]
+                'UPDATE rbac_users SET email = ?, allowed_folders = ?, allowed_environments = ?, role = ? WHERE id = ?',
+                [user.email, JSON.stringify(user.allowedFolders), JSON.stringify(user.allowedEnvironments || []), user.role, user.id]
             )
             await conn.end()
             return { success: true }
@@ -278,8 +280,8 @@ ipcMain.handle('update-rbac-user', async (_event, url: string, user: { id: strin
             const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: 10000, ssl: { rejectUnauthorized: false } })
             await client.connect()
             await client.query(
-                'UPDATE rbac_users SET email = $1, allowed_folders = $2, role = $3 WHERE id = $4',
-                [user.email, JSON.stringify(user.allowedFolders), user.role, user.id]
+                'UPDATE rbac_users SET email = $1, allowed_folders = $2, allowed_environments = $3, role = $4 WHERE id = $5',
+                [user.email, JSON.stringify(user.allowedFolders), JSON.stringify(user.allowedEnvironments || []), user.role, user.id]
             )
             await client.end()
             return { success: true }
@@ -368,6 +370,15 @@ ipcMain.handle('sync-direct', async (_event, url: string, entries: any[]) => {
                         } else if (operation === 'delete') {
                             await conn.execute('DELETE FROM api_collections WHERE id = ?', [payload.id])
                         }
+                    } else if (tableName === 'environments') {
+                        if (operation === 'create' || operation === 'update') {
+                            await conn.execute(
+                                'INSERT INTO environments (id, project_id, folder_id, name, base_url, is_global, variables) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE project_id=?, folder_id=?, name=?, base_url=?, is_global=?, variables=?',
+                                [payload.id, payload.projectId, payload.folderId || null, payload.name, payload.baseUrl || '', payload.isGlobal ? 1 : 0, payload.variables, payload.projectId, payload.folderId || null, payload.name, payload.baseUrl || '', payload.isGlobal ? 1 : 0, payload.variables]
+                            )
+                        } else if (operation === 'delete') {
+                            await conn.execute('DELETE FROM environments WHERE id = ?', [payload.id])
+                        }
                     }
                     results.push({ id: entry.id, status: 'synced' })
                 } catch (err: any) {
@@ -423,6 +434,15 @@ ipcMain.handle('sync-direct', async (_event, url: string, entries: any[]) => {
                         } else if (operation === 'delete') {
                             await client.query('DELETE FROM api_collections WHERE id = $1', [payload.id])
                         }
+                    } else if (tableName === 'environments') {
+                        if (operation === 'create' || operation === 'update') {
+                            await client.query(
+                                'INSERT INTO environments (id, project_id, folder_id, name, base_url, is_global, variables) VALUES ($1, $2, $3, $4, $5, $6, $7) ON CONFLICT (id) DO UPDATE SET project_id=$2, folder_id=$3, name=$4, base_url=$5, is_global=$6, variables=$7',
+                                [payload.id, payload.projectId, payload.folderId || null, payload.name, payload.baseUrl || '', payload.isGlobal ? 1 : 0, payload.variables]
+                            )
+                        } else if (operation === 'delete') {
+                            await client.query('DELETE FROM environments WHERE id = $1', [payload.id])
+                        }
                     }
                     results.push({ id: entry.id, status: 'synced' })
                 } catch (err: any) {
@@ -444,8 +464,9 @@ ipcMain.handle('fetch-remote-data', async (_event, url: string, projectId: strin
             const conn = await mysql.createConnection({ uri: url, connectTimeout: 10000 })
             const [folders]: any = await conn.execute('SELECT * FROM folders WHERE project_id = ?', [projectId])
             const [apis]: any = await conn.execute('SELECT * FROM api_collections WHERE project_id = ?', [projectId])
+            const [environments]: any = await conn.execute('SELECT * FROM environments WHERE project_id = ?', [projectId])
             await conn.end()
-            return { success: true, folders, apis }
+            return { success: true, folders, apis, environments }
         } catch (err: any) {
             return { success: false, error: err.message }
         }
@@ -455,8 +476,9 @@ ipcMain.handle('fetch-remote-data', async (_event, url: string, projectId: strin
             await client.connect()
             const foldersRes = await client.query('SELECT * FROM folders WHERE project_id = $1', [projectId])
             const apisRes = await client.query('SELECT * FROM api_collections WHERE project_id = $1', [projectId])
+            const environmentsRes = await client.query('SELECT * FROM environments WHERE project_id = $1', [projectId])
             await client.end()
-            return { success: true, folders: foldersRes.rows, apis: apisRes.rows }
+            return { success: true, folders: foldersRes.rows, apis: apisRes.rows, environments: environmentsRes.rows }
         } catch (err: any) {
             return { success: false, error: err.message }
         }

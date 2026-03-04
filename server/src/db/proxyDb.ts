@@ -1,13 +1,59 @@
 import { DbAdapter, createAdapter } from './adapter.js';
 
 let db: DbAdapter | null = null;
+let schemaChecked = false;
 
 export async function initDB() {
-    if (db) return db;
-    const dbUrl = process.env.DATABASE_URL || process.env.DB_URL;
-    if (!dbUrl) throw new Error('DATABASE_URL environment variable is not set');
-    db = await createAdapter(dbUrl);
+    if (!db) {
+        const dbUrl = process.env.DATABASE_URL || process.env.DB_URL;
+        if (!dbUrl) throw new Error('DATABASE_URL environment variable is not set');
+        db = await createAdapter(dbUrl);
+    }
+
+    if (!schemaChecked) {
+        // Auto-migrate schema once per server lifecycle
+        await ensureSchema(db);
+        schemaChecked = true;
+    }
+
     return db;
+}
+
+export async function ensureSchema(adapter: DbAdapter) {
+    console.log('[Schema] Checking for updates...');
+    try {
+        // 1. Create environments table
+        await adapter.execute(`
+            CREATE TABLE IF NOT EXISTS environments (
+                id VARCHAR(50) PRIMARY KEY,
+                project_id VARCHAR(50),
+                folder_id VARCHAR(50),
+                name VARCHAR(100) NOT NULL,
+                base_url TEXT,
+                is_global BOOLEAN DEFAULT FALSE,
+                variables TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log('[Schema] Environments table ready.');
+
+        // 2. Add allowed_environments to rbac_users
+        try {
+            await adapter.execute('ALTER TABLE rbac_users ADD COLUMN allowed_environments TEXT');
+            console.log('[Schema] Column allowed_environments added.');
+        } catch (e: any) {
+            // Ignore if column already exists (Error 1060 in MySQL)
+            const msg = e.message.toLowerCase();
+            const isDuplicate = msg.includes('duplicate') || msg.includes('already exists') || msg.includes('1060');
+            if (!isDuplicate) {
+                console.warn('[Schema] Column update warning:', e.message);
+            } else {
+                console.log('[Schema] Column allowed_environments already exists.');
+            }
+        }
+    } catch (err: any) {
+        console.error('[Schema] Migration error:', err.message);
+    }
 }
 
 export async function verifyUserRole(adapter: DbAdapter, user: string | null, token: string, projectId: string) {

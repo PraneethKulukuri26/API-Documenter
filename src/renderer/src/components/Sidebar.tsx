@@ -8,6 +8,7 @@ import type { Project, Folder, ApiCollection } from '@/types'
 import { useQueryClient } from '@tanstack/react-query'
 
 import { ConfirmModal } from './ConfirmModal'
+import { EnvironmentSelector } from './EnvironmentSelector'
 
 export function Sidebar() {
     const qc = useQueryClient()
@@ -146,6 +147,12 @@ export function Sidebar() {
                             </div>
                         )}
                     </div>
+                </div>
+
+                {/* ═══ ENVIRONMENTS section ═══ */}
+                <div style={{ flexShrink: 0, borderBottom: '1px solid #1A1A1A', padding: '12px 16px' }}>
+                    <p style={{ padding: '0 4px 8px 4px', color: '#444', margin: 0, fontSize: 'calc(9px * var(--font-scale))', letterSpacing: '0.15em', textTransform: 'uppercase', fontWeight: 800 }}>Environment</p>
+                    <EnvironmentSelector />
                 </div>
 
                 {/* ═══ FOLDERS section ═══ */}

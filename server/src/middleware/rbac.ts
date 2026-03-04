@@ -73,3 +73,49 @@ export function checkProjectAccess(context: AuthContext, projectId: string): voi
         throw new Error('Unauthorized project access');
     }
 }
+
+export async function checkEnvironmentAccess(context: AuthContext, envIdOrName: string, action: 'read' | 'write' | 'delete', isGlobal: boolean = false): Promise<void> {
+    const { user } = context;
+
+    // Admin has full access
+    if (user.role === 'admin') return;
+
+    // Globals are read-accessible to everyone in the project
+    // If they want to write/delete global, they need to be an editor/admin
+    // But usually global envs are handled specially.
+
+    let effectiveRole: 'viewer' | 'editor' = user.role;
+    let isAllowed = false;
+
+    if (isGlobal) {
+        if (action === 'read') return;
+        isAllowed = true; // For now allow global edit if they are not viewer (checked later)
+    } else {
+        // Check specific permissions
+        const match = user.allowedEnvironments.find((e: any) => {
+            const idOrName = typeof e === 'string' ? e : e.envId;
+            return idOrName === '*' || idOrName === envIdOrName;
+        });
+
+        if (match) {
+            isAllowed = true;
+            if (typeof match === 'object' && (match as any).role) {
+                effectiveRole = (match as any).role;
+            }
+        }
+    }
+
+    if (!isAllowed) {
+        throw new Error(`Access denied to environment: ${envIdOrName}`);
+    }
+
+    // Enforce role permissions
+    if (effectiveRole === 'viewer' && action !== 'read') {
+        throw new Error(`Viewer role cannot perform ${action} operations on environment`);
+    }
+
+    if (action === 'delete') {
+        // Only global Admin role can delete environments in this project
+        throw new Error(`Only project administrators can delete environments`);
+    }
+}

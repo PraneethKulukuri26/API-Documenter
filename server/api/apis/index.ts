@@ -67,7 +67,7 @@ export default async function handler(req: any, res: any) {
                 url_params, headers, body_type, request_body, response_examples
             } = req.body;
 
-            if (!id || !folder_id || !name || !method || !path) {
+            if (!id || !folder_id || !name || !method) {
                 return res.status(400).json({ error: 'Missing required fields' });
             }
 
@@ -93,7 +93,5 @@ export default async function handler(req: any, res: any) {
         return res.status(405).json({ error: 'Method not allowed' });
     } catch (err: any) {
         return res.status(500).json({ error: err.message });
-    } finally {
-        await db.close();
     }
 }

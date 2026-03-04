@@ -62,6 +62,21 @@ export interface Folder {
     createdAt: number
 }
 
+// ─── Environment ───────────────────────────────────────────────
+export interface Environment {
+    id: string
+    projectId: string
+    folderId?: string | null
+    name: string
+    baseUrl: string
+    isGlobal: boolean
+    variables: string // JSON Record<string, string>
+    role?: UserRole
+    lastSync: number | null
+    syncStatus: SyncStatus
+    createdAt: number
+}
+
 export interface ApiCollection {
     id: string
     projectId: string
@@ -82,7 +97,7 @@ export interface ApiCollection {
 }
 
 // ─── Sync Queue ─────────────────────────────────────────────────
-export type SyncTableName = 'projects' | 'folders' | 'apiCollections'
+export type SyncTableName = 'projects' | 'folders' | 'apiCollections' | 'environments'
 export type SyncOperation = 'create' | 'update' | 'delete'
 
 export interface SyncQueueItem {
@@ -108,6 +123,7 @@ export interface RbacUser {
     email: string
     token: string
     allowedFolders: string[] | FolderPermission[]
+    allowedEnvironments: string[]
     projectId: string
     role: UserRole
     createdAt: number
@@ -120,6 +136,7 @@ export interface ProxyConnection {
     connected: boolean
     userRole?: UserRole
     allowedFolders?: string[] | FolderPermission[]
+    allowedEnvironments?: string[]
 }
 
 export interface SavedTeamConnection {

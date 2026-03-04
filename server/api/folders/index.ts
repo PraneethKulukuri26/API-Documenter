@@ -45,17 +45,28 @@ export default async function handler(req: any, res: any) {
             // Inject role into each folder
             const enrichedFolders = folders.map((f: any) => {
                 let effectiveRole = user.role;
-                if (Array.isArray(user.allowedFolders)) {
-                    if (user.allowedFolders.some(item => item === '*')) {
+                const allowed = user.allowedFolders;
+
+                if (Array.isArray(allowed)) {
+                    if (allowed.some(item => item === '*')) {
                         effectiveRole = user.role;
-                    } else if (typeof user.allowedFolders[0] === 'object' && user.allowedFolders[0] !== null) {
-                        const perm = (user.allowedFolders as any[]).find((p: any) => p.folderId === f.id);
-                        if (perm) effectiveRole = perm.role;
-                    } else if (user.allowedFolders.includes(f.id)) {
-                        effectiveRole = user.role;
+                    } else {
+                        // Find permission object by folderId (could be UUID or Name)
+                        const perm = (allowed as any[]).find((p: any) => {
+                            const idOrName = typeof p === 'string' ? p : p.folderId;
+                            return idOrName === f.id || idOrName === f.name;
+                        });
+
+                        if (perm && typeof perm === 'object' && perm.role) {
+                            effectiveRole = perm.role;
+                        } else if (perm && typeof perm === 'string') {
+                            // Legacy string format
+                            effectiveRole = user.role;
+                        }
                     }
-                } else if (user.allowedFolders && typeof user.allowedFolders === 'object') {
-                    effectiveRole = (user.allowedFolders as any)[f.id] || (user.allowedFolders as any)[f.name] || user.role;
+                } else if (allowed && typeof allowed === 'object') {
+                    // Legacy Record format
+                    effectiveRole = (allowed as any)[f.id] || (allowed as any)[f.name] || user.role;
                 }
                 return { ...f, role: effectiveRole };
             });
@@ -82,7 +93,5 @@ export default async function handler(req: any, res: any) {
         return res.status(405).json({ error: 'Method not allowed' });
     } catch (err: any) {
         return res.status(500).json({ error: err.message });
-    } finally {
-        await db.close();
     }
 }

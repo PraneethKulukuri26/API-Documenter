@@ -14,6 +14,7 @@ import { DatabaseSettingsDialog } from './components/DatabaseSettingsDialog'
 import { RbacSettingsDialog } from './components/RbacSettingsDialog'
 import { DeployProxyDialog } from './components/DeployProxyDialog'
 import { GeneralSettingsDialog } from './components/GeneralSettingsDialog'
+import { EnvironmentsDialog } from './components/EnvironmentsDialog'
 import { UpdaterNotifier } from './components/UpdaterNotifier'
 
 export function App() {
@@ -108,6 +109,7 @@ export function App() {
             {showRbacSettings && <RbacSettingsDialog />}
             {showDeploySettings && <DeployProxyDialog />}
             {showGeneralSettings && <GeneralSettingsDialog />}
+            <EnvironmentsDialog />
 
             {/* Auto-Updater Visual Layer */}
             <UpdaterNotifier />

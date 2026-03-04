@@ -1,11 +1,12 @@
 import { create } from 'zustand'
-import type { EditorTab, ProxyConnection } from '@/types'
+import type { EditorTab, ProxyConnection, Environment } from '@/types'
 
 interface AppState {
     // Selection state
     currentProjectId: string | null
     currentFolderId: string | null
     currentApiId: string | null
+    currentEnvironmentId: string | null
 
     // UI state
     isOnline: boolean
@@ -23,6 +24,7 @@ interface AppState {
     showDeploySettings: boolean
     showGeneralSettings: boolean
     showTeamConnect: boolean
+    showEnvironmentsDialog: boolean
     editingFolderId: string | null
 
     // Team Workspace Mode
@@ -32,12 +34,19 @@ interface AppState {
     // Proxy state
     proxyConnection: ProxyConnection | null
 
+    // Environment store
+    environments: Environment[]
+
     // Actions
+    scrollApi: (apiId: string | null, folderId?: string) => void
     selectProject: (id: string | null) => void
     selectFolder: (id: string | null) => void
     selectApi: (apiId: string | null, folderId?: string) => void
+    selectEnvironment: (id: string | null) => void
+    setEnvironments: (envs: Environment[]) => void
     setIsOnline: (online: boolean) => void
     setSidebarWidth: (width: number) => void
+    setShowEnvironmentsDialog: (show: boolean) => void
     setActiveEditorTab: (tab: EditorTab) => void
     toggleSidebar: () => void
     setShowCreateProject: (show: boolean) => void
@@ -72,11 +81,15 @@ export const useAppStore = create<AppState>((set) => ({
     showDeploySettings: false,
     showGeneralSettings: false,
     showTeamConnect: false,
+    showEnvironmentsDialog: false,
     editingFolderId: null,
     isSyncing: false,
     proxyConnection: null,
     isTeamWorkspace: false,
     teamConfig: null,
+
+    environments: [],
+    currentEnvironmentId: null,
 
     selectProject: (id) => set({ currentProjectId: id, currentFolderId: null, currentApiId: null }),
     selectFolder: (id) => set({ currentFolderId: id }),
@@ -84,8 +97,16 @@ export const useAppStore = create<AppState>((set) => ({
         currentApiId: apiId,
         currentFolderId: folderId ?? s.currentFolderId
     })),
+    scrollApi: (apiId: string | null, folderId?: string) => set((s) => ({
+        currentApiId: apiId,
+        currentFolderId: folderId ?? s.currentFolderId
+    })),
+    selectEnvironment: (id) => set({ currentEnvironmentId: id }),
+    setEnvironments: (envs) => set({ environments: envs }),
+
     setIsOnline: (online) => set({ isOnline: online }),
     setSidebarWidth: (width) => set({ sidebarWidth: width }),
+    setShowEnvironmentsDialog: (show) => set({ showEnvironmentsDialog: show }),
     setActiveEditorTab: (tab) => set({ activeEditorTab: tab }),
     toggleSidebar: () => set((s) => ({ isSidebarCollapsed: !s.isSidebarCollapsed })),
     setShowCreateProject: (show) => set({ showCreateProject: show }),

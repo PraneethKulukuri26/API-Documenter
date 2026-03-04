@@ -1,11 +1,13 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useApi, useUpdateApi } from '@/hooks/useApis'
 import { useFolder } from '@/hooks/useFolders'
+import { useEnvironments } from '@/hooks/useEnvironments'
 import { useAppStore } from '@/stores/appStore'
 import { KeyValueEditor } from './KeyValueEditor'
 import { JsonEditor } from './JsonEditor'
 import { ResponseViewer } from './ResponseViewer'
 import { ResponsePanel } from './ResponsePanel'
+import { VariableInput } from './VariableInput'
 import type { HttpResponse } from './ResponsePanel'
 import type { HttpMethod, BodyType, EditorTab, KeyValuePair, ResponseExample } from '@/types'
 import { v4 as uuid } from 'uuid'
@@ -23,8 +25,9 @@ interface Props { apiId: string }
 export function RequestEditor({ apiId }: Props) {
     const { data: api } = useApi(apiId)
     const { data: folder } = useFolder(api?.folderId || null)
+    const { currentProjectId, currentEnvironmentId, activeEditorTab, setActiveEditorTab } = useAppStore()
+    const { data: environments } = useEnvironments(currentProjectId)
     const updateApi = useUpdateApi()
-    const { activeEditorTab, setActiveEditorTab } = useAppStore()
 
     const [name, setName] = useState('')
     const [description, setDescription] = useState('')
@@ -107,43 +110,70 @@ export function RequestEditor({ apiId }: Props) {
         return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp) }
     }, [dragging, splitPct])
 
+    // ── Variable Resolution ──
+    const variablesMap = useMemo(() => {
+        const activeEnv = environments?.find(e => e.id === currentEnvironmentId)
+        const globals = environments?.find(e => e.isGlobal)
+        let vars: Record<string, string> = {}
+        if (globals?.variables) {
+            try { vars = { ...vars, ...JSON.parse(globals.variables) } } catch (e) { /* ignore */ }
+        }
+        if (activeEnv?.variables) {
+            try { vars = { ...vars, ...JSON.parse(activeEnv.variables) } } catch (e) { /* ignore */ }
+        }
+        return vars
+    }, [environments, currentEnvironmentId])
+
+    const resolveVariables = useCallback((text: string) => {
+        if (!text) return text
+        return text.replace(/\{\{(.+?)\}\}/g, (_, key) => variablesMap[key.trim()] || `{{${key}}}`)
+    }, [variablesMap])
+
     // ── Send HTTP request ──
     const sendRequest = useCallback(async () => {
         if (sending) return
         setSending(true); setLiveResponse(null); setResponseCollapsed(false)
 
-        let fullUrl = path
-        if (!/^https?:\/\//i.test(fullUrl)) fullUrl = 'https://' + fullUrl.replace(/^\/+/, '')
+        const activeEnv = environments?.find(e => e.id === currentEnvironmentId)
+        let fullUrl = resolveVariables(path)
+
+        if (!/^https?:\/\//i.test(fullUrl) && fullUrl.length > 0) {
+            fullUrl = 'https://' + fullUrl
+        }
+
         const enabledParams = urlParams.filter(p => p.enabled && p.key)
         if (enabledParams.length > 0) {
-            const qs = enabledParams.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&')
+            const qs = enabledParams.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(resolveVariables(p.value))}`).join('&')
             fullUrl += (fullUrl.includes('?') ? '&' : '?') + qs
         }
 
         const hdrs: Record<string, string> = {}
-        headers.filter(h => h.enabled && h.key).forEach(h => { hdrs[h.key] = h.value })
+        headers.filter(h => h.enabled && h.key).forEach(h => {
+            hdrs[h.key] = resolveVariables(h.value)
+        })
 
         let body: string | undefined
-        if (bodyType === 'json' && requestBody) {
-            body = requestBody
+        const processedBody = resolveVariables(requestBody)
+
+        if (bodyType === 'json' && processedBody) {
+            body = processedBody
             if (!hdrs['Content-Type'] && !hdrs['content-type']) hdrs['Content-Type'] = 'application/json'
-        } else if (bodyType === 'raw' && requestBody) {
-            body = requestBody
+        } else if (bodyType === 'raw' && processedBody) {
+            body = processedBody
         } else if (bodyType === 'form') {
             const formParams = urlParams.filter(p => p.enabled && p.key)
-            body = formParams.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(p.value)}`).join('&')
+            body = formParams.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(resolveVariables(p.value))}`).join('&')
             if (!hdrs['Content-Type'] && !hdrs['content-type']) hdrs['Content-Type'] = 'application/x-www-form-urlencoded'
         }
+
 
         try {
             const res = await (window as any).electronAPI.sendHttpRequest({ url: fullUrl, method, headers: hdrs, body })
             setLiveResponse(res)
-        } catch (err: any) {
-            setLiveResponse({ success: false, error: err.message || String(err), time: 0 })
         } finally {
             setSending(false)
         }
-    }, [path, method, urlParams, headers, bodyType, requestBody, sending])
+    }, [path, method, urlParams, headers, bodyType, requestBody, sending, environments, currentEnvironmentId, resolveVariables])
 
     const saveAsExample = (status: number, body: string, resHeaders: Record<string, string>) => {
         const headerPairs: KeyValuePair[] = Object.entries(resHeaders).map(([k, v]) => ({ id: uuid(), key: k, value: v, enabled: true }))
@@ -191,14 +221,17 @@ export function RequestEditor({ apiId }: Props) {
 
                 {/* ── Endpoint Bar ── */}
                 <div style={{ flexShrink: 0, padding: '20px 24px 0 24px' }}>
-                    <div style={{ marginBottom: 12 }}>
-                        <input value={name} onChange={e => setName(e.target.value)} placeholder="Endpoint name"
-                            className="w-full"
-                            style={{ background: 'transparent', border: 'none', fontSize: '18px', fontWeight: 600, color: '#FFFFFF', outline: 'none', letterSpacing: '-0.02em', marginBottom: '4px' }} />
-                        <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Add a description…"
-                            className="w-full"
-                            style={{ background: 'transparent', border: 'none', fontSize: '13px', color: '#6B7280', outline: 'none' }} />
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                        <div style={{ flex: 1 }}>
+                            <input value={name} onChange={e => setName(e.target.value)} placeholder="Endpoint name"
+                                className="w-full"
+                                style={{ background: 'transparent', border: 'none', fontSize: '18px', fontWeight: 600, color: '#FFFFFF', outline: 'none', letterSpacing: '-0.02em', marginBottom: '4px' }} />
+                            <input value={description} onChange={e => setDescription(e.target.value)} placeholder="Add a description…"
+                                className="w-full"
+                                style={{ background: 'transparent', border: 'none', fontSize: '13px', color: '#6B7280', outline: 'none' }} />
+                        </div>
                     </div>
+
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: '#111111', border: '1px solid #1F1F1F', borderRadius: '12px', padding: '12px' }}>
 
@@ -230,11 +263,14 @@ export function RequestEditor({ apiId }: Props) {
                         </div>
 
                         {/* URL Input */}
-                        <input value={path} onChange={e => setPath(e.target.value)} placeholder="https://api.example.com/endpoint"
+                        <VariableInput
+                            value={path}
+                            onChange={setPath}
+                            variables={variablesMap}
+                            placeholder="https://api.example.com/endpoint"
                             onKeyDown={e => e.key === 'Enter' && sendRequest()}
-                            style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px', background: '#0F0F0F', border: '1px solid #2A2A2A', borderRadius: '10px', height: '40px', padding: '0 12px', color: '#FFFFFF', outline: 'none', transition: '150ms ease' }}
-                            onFocus={e => { e.currentTarget.style.borderColor = '#FFFFFF'; e.currentTarget.style.boxShadow = '0 0 0 1px rgba(255,255,255,0.1)' }}
-                            onBlur={e => { e.currentTarget.style.borderColor = '#2A2A2A'; e.currentTarget.style.boxShadow = 'none' }} />
+                            style={{ flex: 1, fontFamily: 'monospace', fontSize: '13px', background: '#0F0F0F', border: '1px solid #2A2A2A', borderRadius: '10px', height: '40px', transition: '150ms ease' }}
+                        />
 
                         {/* Send */}
                         <button onClick={sendRequest} disabled={sending}
@@ -284,13 +320,13 @@ export function RequestEditor({ apiId }: Props) {
                     {activeEditorTab === 'params' && (
                         <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <SectionHeader title="URL Parameters" sub="Query string parameters appended to the request URL" />
-                            <KeyValueEditor pairs={urlParams} onChange={setUrlParams} keyPlaceholder="Parameter" valuePlaceholder="Value" />
+                            <KeyValueEditor pairs={urlParams} onChange={setUrlParams} keyPlaceholder="Parameter" valuePlaceholder="Value" variables={variablesMap} />
                         </div>
                     )}
                     {activeEditorTab === 'headers' && (
                         <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <SectionHeader title="Request Headers" sub="HTTP headers sent with the request" />
-                            <KeyValueEditor pairs={headers} onChange={setHeaders} keyPlaceholder="Header" valuePlaceholder="Value" />
+                            <KeyValueEditor pairs={headers} onChange={setHeaders} keyPlaceholder="Header" valuePlaceholder="Value" variables={variablesMap} />
                         </div>
                     )}
                     {activeEditorTab === 'body' && (
@@ -318,7 +354,7 @@ export function RequestEditor({ apiId }: Props) {
                                         spellCheck={false} />
                                 </div>
                             )}
-                            {bodyType === 'form' && <KeyValueEditor pairs={urlParams} onChange={setUrlParams} keyPlaceholder="Field" valuePlaceholder="Value" />}
+                            {bodyType === 'form' && <KeyValueEditor pairs={urlParams} onChange={setUrlParams} keyPlaceholder="Field" valuePlaceholder="Value" variables={variablesMap} />}
                             {bodyType === 'none' && (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '64px 0', background: '#111111', border: '1px solid #1F1F1F', borderRadius: '12px' }}>
                                     <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>No body for this request</p>

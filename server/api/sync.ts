@@ -115,6 +115,22 @@ export default async function handler(req: any, res: any) {
                             ]
                         );
                     }
+                } else if (tableName === 'environments') {
+                    console.log(`[Sync] Processing environment: ${payload.name} (${operation})`);
+                    if (operation === 'delete') {
+                        if (user.role !== 'admin') throw new Error('Admin only deletion');
+                        await db.execute('DELETE FROM environments WHERE id = ? AND project_id = ?', [payload.id, user.projectId]);
+                    } else if (operation === 'create') {
+                        await db.execute(
+                            'INSERT INTO environments (id, project_id, folder_id, name, base_url, is_global, variables) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                            [payload.id, user.projectId, payload.folderId || null, payload.name, payload.baseUrl || '', payload.isGlobal ? 1 : 0, payload.variables || '{}']
+                        );
+                    } else if (operation === 'update') {
+                        await db.execute(
+                            'UPDATE environments SET name = ?, base_url = ?, is_global = ?, folder_id = ?, variables = ? WHERE id = ? AND project_id = ?',
+                            [payload.name, payload.baseUrl || '', payload.isGlobal ? 1 : 0, payload.folderId || null, payload.variables, payload.id, user.projectId]
+                        );
+                    }
                 }
                 results.push({ id: entry.id, status: 'synced' });
             } catch (e: any) {

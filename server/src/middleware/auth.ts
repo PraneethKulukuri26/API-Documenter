@@ -1,4 +1,5 @@
-import { DbAdapter, createAdapter } from '../db/adapter.js';
+import { DbAdapter } from '../db/adapter.js';
+import { initDB } from '../db/proxyDb.js';
 
 export interface AuthContext {
     user: {
@@ -6,6 +7,7 @@ export interface AuthContext {
         email: string;
         role: 'viewer' | 'editor' | 'admin';
         allowedFolders: (string | { folderId: string; role: 'viewer' | 'editor' })[];
+        allowedEnvironments: (string | { envId: string; role: 'viewer' | 'editor' })[];
         projectId: string;
     };
     db: DbAdapter;
@@ -21,12 +23,12 @@ export async function authenticate(req: any): Promise<AuthContext> {
     if (!token) throw new Error('Authentication token is required');
     if (!projectId) throw new Error('Project ID is required');
 
-    const db = await createAdapter(dbUrl);
+    const db = await initDB();
 
     try {
         console.log(`[Auth] Attempting login with token and projectId: ${projectId}`);
         const users = await db.query<any>(
-            'SELECT id, email, role, allowed_folders, project_id FROM rbac_users WHERE token = ? AND project_id = ?',
+            'SELECT id, email, role, allowed_folders, allowed_environments, project_id FROM rbac_users WHERE token = ? AND project_id = ?',
             [token, projectId]
         );
 
@@ -66,18 +68,28 @@ export async function authenticate(req: any): Promise<AuthContext> {
             allowedFolders = [];
         }
 
+        let allowedEnvironments: (string | { envId: string; role: 'viewer' | 'editor' })[] = [];
+        try {
+            const parsedEnv = typeof user.allowed_environments === 'string'
+                ? JSON.parse(user.allowed_environments)
+                : user.allowed_environments;
+            allowedEnvironments = Array.isArray(parsedEnv) ? parsedEnv : [];
+        } catch (e) {
+            allowedEnvironments = [];
+        }
+
         return {
             user: {
                 id: user.id,
                 email: user.email,
                 role: user.role,
                 allowedFolders,
+                allowedEnvironments,
                 projectId: user.project_id
             },
             db
         };
     } catch (err) {
-        await db.close();
         throw err;
     }
 }

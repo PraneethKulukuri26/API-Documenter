@@ -21,7 +21,8 @@ export async function performSync(qc: QueryClient, proxyConnection: ProxyConnect
             qc.invalidateQueries({ queryKey: ['folders'], refetchType: 'all' }),
             qc.invalidateQueries({ queryKey: ['apis'], refetchType: 'all' }),
             qc.invalidateQueries({ queryKey: ['folder'], refetchType: 'all' }),
-            qc.invalidateQueries({ queryKey: ['api'], refetchType: 'all' })
+            qc.invalidateQueries({ queryKey: ['api'], refetchType: 'all' }),
+            qc.invalidateQueries({ queryKey: ['environments'], refetchType: 'all' })
         ])
 
         console.log(`[Sync] Team refresh sync complete for project ${projectId}`)
@@ -99,6 +100,8 @@ export async function performSync(qc: QueryClient, proxyConnection: ProxyConnect
                         await db.folders.update(queueItem.localId, { syncStatus: 'synced' })
                     } else if (queueItem.tableName === 'apiCollections') {
                         await db.apiCollections.update(queueItem.localId, { syncStatus: 'synced' })
+                    } else if (queueItem.tableName === 'environments') {
+                        await db.environments.update(queueItem.localId, { syncStatus: 'synced' })
                     }
                     await db.syncQueue.delete(result.id)
                 } else {
@@ -112,9 +115,10 @@ export async function performSync(qc: QueryClient, proxyConnection: ProxyConnect
 
         // ─── PULL PHASE: Fetch remote changes ───
         const pullRemote = async () => {
-            const { mapRemoteFolder, mapRemoteApi } = await import('@/utils/remoteMapper')
+            const { mapRemoteFolder, mapRemoteApi, mapRemoteEnvironment } = await import('@/utils/remoteMapper')
             let remoteFolders: any[] = []
             let remoteApis: any[] = []
+            let remoteEnvs: any[] = []
 
             if (hasDirect && (window as any).electronAPI?.fetchRemoteData) {
                 console.log(`[Sync] Pulling direct data for project ${projectId}`)
@@ -122,9 +126,13 @@ export async function performSync(qc: QueryClient, proxyConnection: ProxyConnect
                 if (res.success) {
                     remoteFolders = res.folders.map(mapRemoteFolder)
                     remoteApis = res.apis.map(mapRemoteApi)
+                    if (res.environments) {
+                        remoteEnvs = res.environments.map(mapRemoteEnvironment)
+                    }
                 }
             } else if (hasProxy) {
                 console.log(`[Sync] Pulling proxy data for project ${projectId}`)
+                // Folders
                 const foldersRes = await (window as any).electronAPI.sendHttpRequest({
                     url: `${proxyConnection!.proxyUrl}/api/folders?projectId=${projectId}`,
                     method: 'GET',
@@ -132,9 +140,9 @@ export async function performSync(qc: QueryClient, proxyConnection: ProxyConnect
                 })
                 if (foldersRes.success) {
                     remoteFolders = JSON.parse(foldersRes.body).map(mapRemoteFolder)
-                    console.log(`[Sync] Pulled ${remoteFolders.length} folders from proxy`)
                 }
 
+                // APIs
                 const apisRes = await (window as any).electronAPI.sendHttpRequest({
                     url: `${proxyConnection!.proxyUrl}/api/apis?projectId=${projectId}`,
                     method: 'GET',
@@ -142,7 +150,16 @@ export async function performSync(qc: QueryClient, proxyConnection: ProxyConnect
                 })
                 if (apisRes.success) {
                     remoteApis = JSON.parse(apisRes.body).map(mapRemoteApi)
-                    console.log(`[Sync] Pulled ${remoteApis.length} APIs from proxy`)
+                }
+
+                // Environments
+                const envsRes = await (window as any).electronAPI.sendHttpRequest({
+                    url: `${proxyConnection!.proxyUrl}/api/environments?projectId=${projectId}`,
+                    method: 'GET',
+                    headers: { 'Authorization': `Bearer ${proxyConnection!.token}` }
+                })
+                if (envsRes.success) {
+                    remoteEnvs = JSON.parse(envsRes.body).map(mapRemoteEnvironment)
                 }
             }
 
@@ -176,6 +193,23 @@ export async function performSync(qc: QueryClient, proxyConnection: ProxyConnect
                     await db.apiCollections.delete(la.id)
                 }
             }
+
+            // Sync Environments
+            for (const re of remoteEnvs) {
+                const local = await db.environments.get(re.id)
+                if (!local || (local as any).syncStatus === 'synced' || (local as any).syncStatus === undefined) {
+                    await db.environments.put({ ...re, syncStatus: 'synced' })
+                }
+            }
+            const localEnvs = await db.environments.where('projectId').equals(projectId).toArray()
+            for (const le of localEnvs) {
+                if ((le as any).syncStatus === 'synced' && !remoteEnvs.find((re: any) => re.id === le.id)) {
+                    if (!le.isGlobal) { // Don't delete global envs
+                        console.log(`[Sync] Deleting local env ${le.id} (not found on remote)`)
+                        await db.environments.delete(le.id)
+                    }
+                }
+            }
         }
 
         try {
@@ -190,7 +224,8 @@ export async function performSync(qc: QueryClient, proxyConnection: ProxyConnect
             qc.invalidateQueries({ queryKey: ['folders'], refetchType: 'all' }),
             qc.invalidateQueries({ queryKey: ['apis'], refetchType: 'all' }),
             qc.invalidateQueries({ queryKey: ['folder'], refetchType: 'all' }),
-            qc.invalidateQueries({ queryKey: ['api'], refetchType: 'all' })
+            qc.invalidateQueries({ queryKey: ['api'], refetchType: 'all' }),
+            qc.invalidateQueries({ queryKey: ['environments'], refetchType: 'all' })
         ])
 
         console.log(`[Sync] performSync completed successfully for project ${projectId}`)

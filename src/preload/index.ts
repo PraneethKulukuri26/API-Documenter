@@ -35,11 +35,11 @@ export interface ElectronAPI {
     // Remote DB management
     testDbConnection: (url: string) => Promise<{ success: boolean; error?: string }>
     createRemoteTables: (url: string) => Promise<{ success: boolean; error?: string }>
-    createRbacUser: (url: string, user: { id: string, email: string, token: string, allowedFolders: string[], projectId: string, role: string }) => Promise<{ success: boolean; error?: string }>
+    createRbacUser: (url: string, user: { id: string, email: string, token: string, allowedFolders: any, allowedEnvironments: any, projectId: string, role: string }) => Promise<{ success: boolean; error?: string }>
     syncDirect: (url: string, entries: any[]) => Promise<{ success: boolean; results?: any[]; error?: string }>
     deleteRemoteProject: (url: string, projectId: string) => Promise<{ success: boolean; error?: string }>
     getRbacUsers: (url: string, projectId: string) => Promise<{ success: boolean; users?: any[]; error?: string }>
-    updateRbacUser: (url: string, user: { id: string, email: string, allowedFolders: any, role: string }) => Promise<{ success: boolean; error?: string }>
+    updateRbacUser: (url: string, user: { id: string, email: string, allowedFolders: any, allowedEnvironments: any, role: string }) => Promise<{ success: boolean; error?: string }>
     deleteRbacUser: (url: string, userId: string) => Promise<{ success: boolean; error?: string }>
     fetchRemoteData: (url: string, projectId: string) => Promise<{ success: boolean; folders: any[]; apis: any[]; error?: string }>
     getRemoteProjects: (url: string) => Promise<{ success: boolean; projects?: any[]; error?: string }>

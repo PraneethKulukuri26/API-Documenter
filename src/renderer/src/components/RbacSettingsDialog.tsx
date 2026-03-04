@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useAppStore } from '@/stores/appStore'
 import { useProject } from '@/hooks/useProjects'
 import { useFolders } from '@/hooks/useFolders'
+import { useEnvironments } from '@/hooks/useEnvironments'
 import { v4 as uuid } from 'uuid'
 
 interface RbacMember {
@@ -9,6 +10,7 @@ interface RbacMember {
     email: string
     token: string
     allowed_folders: string | any[] | Record<string, 'viewer' | 'editor'>
+    allowed_environments: string | any[] | Record<string, 'viewer' | 'editor'>
     role: 'viewer' | 'editor' | 'admin'
 }
 
@@ -16,6 +18,7 @@ export function RbacSettingsDialog() {
     const { currentProjectId, setShowRbacSettings } = useAppStore()
     const { data: project } = useProject(currentProjectId)
     const { data: folders } = useFolders(currentProjectId)
+    const { data: environments } = useEnvironments(currentProjectId)
 
     const [members, setMembers] = useState<RbacMember[]>([])
     const [loading, setLoading] = useState(false)
@@ -25,10 +28,25 @@ export function RbacSettingsDialog() {
         email: '',
         role: 'viewer' as 'viewer' | 'editor' | 'admin',
         folders: [] as string[],
-        folderRoles: {} as Record<string, 'viewer' | 'editor'>
+        folderRoles: {} as Record<string, 'viewer' | 'editor'>,
+        environments: [] as string[],
+        environmentRoles: {} as Record<string, 'viewer' | 'editor'>
     })
 
-    const [successData, setSuccessData] = useState<{ id: string, email: string, token: string, role: string, folders: string } | null>(null)
+    useEffect(() => {
+        if (environments && environments.length > 0 && !editingMember) {
+            const globalEnv = environments.find(e => e.isGlobal || e.name.toLowerCase() === 'global')
+            if (globalEnv && !newUser.environments.includes(globalEnv.id)) {
+                setNewUser(prev => ({
+                    ...prev,
+                    environments: [...prev.environments, globalEnv.id],
+                    environmentRoles: { ...prev.environmentRoles, [globalEnv.id]: 'viewer' }
+                }))
+            }
+        }
+    }, [environments, editingMember])
+
+    const [successData, setSuccessData] = useState<{ id: string, email: string, token: string, role: string, folders: string, environments: string } | null>(null)
 
     const fetchMembers = async () => {
         if (!project?.databaseUrl || !currentProjectId) return
@@ -55,12 +73,18 @@ export function RbacSettingsDialog() {
                 role: newUser.folderRoles[id] || (newUser.role === 'admin' ? 'editor' : newUser.role)
             }))
 
+        const allowedEnvironments = newUser.environments.map(id => ({
+            envId: id,
+            role: newUser.environmentRoles[id] || 'viewer'
+        }))
+
         const userId = uuid()
         const res = await window.electronAPI.createRbacUser(project.databaseUrl, {
             id: userId,
             email: newUser.email,
             token,
             allowedFolders: allowedFolders as any,
+            allowedEnvironments: allowedEnvironments as any,
             projectId: currentProjectId!,
             role: newUser.role
         })
@@ -71,9 +95,10 @@ export function RbacSettingsDialog() {
                 email: newUser.email,
                 token,
                 role: newUser.role,
-                folders: formatFolders(allowedFolders)
+                folders: formatFolders(allowedFolders),
+                environments: formatEnvironments(allowedEnvironments)
             })
-            setNewUser({ email: '', role: 'viewer', folders: [], folderRoles: {} })
+            setNewUser({ email: '', role: 'viewer', folders: [], folderRoles: {}, environments: [], environmentRoles: {} })
             fetchMembers()
         } else {
             alert('Failed to add user: ' + res.error)
@@ -126,11 +151,26 @@ export function RbacSettingsDialog() {
             )
         }
 
+        const envsData = typeof member.allowed_environments === 'string' ? JSON.parse(member.allowed_environments) : member.allowed_environments
+
+        let selectedEnvs: string[] = []
+        let envRoles: Record<string, 'viewer' | 'editor'> = {}
+
+        if (Array.isArray(envsData)) {
+            selectedEnvs = envsData.map(e => e.envId)
+            envRoles = Object.fromEntries(envsData.map(e => [e.envId, e.role]))
+        } else if (envsData && typeof envsData === 'object') {
+            selectedEnvs = Object.keys(envsData)
+            envRoles = envsData
+        }
+
         setNewUser({
             email: member.email,
             role: member.role,
             folders: selectedFolders,
-            folderRoles: roles
+            folderRoles: roles,
+            environments: selectedEnvs,
+            environmentRoles: envRoles
         })
     }
 
@@ -144,10 +184,16 @@ export function RbacSettingsDialog() {
                 role: newUser.folderRoles[id] || (newUser.role === 'admin' ? 'editor' : newUser.role)
             }))
 
+        const allowedEnvironments = newUser.environments.map(id => ({
+            envId: id,
+            role: newUser.environmentRoles[id] || 'viewer'
+        }))
+
         const res = await window.electronAPI.updateRbacUser(project.databaseUrl, {
             id: editingMember,
             email: newUser.email,
             allowedFolders: allowedFolders as any,
+            allowedEnvironments: allowedEnvironments as any,
             role: newUser.role
         })
 
@@ -156,13 +202,30 @@ export function RbacSettingsDialog() {
                 ...m,
                 email: newUser.email,
                 role: newUser.role,
-                allowed_folders: JSON.stringify(allowedFolders)
+                allowed_folders: JSON.stringify(allowedFolders),
+                allowed_environments: JSON.stringify(allowedEnvironments)
             } : m))
             setEditingMember(null)
-            setNewUser({ email: '', role: 'viewer', folders: [], folderRoles: {} })
+            setNewUser({ email: '', role: 'viewer', folders: [], folderRoles: {}, environments: [], environmentRoles: {} })
+            fetchMembers()
         } else {
             alert('Failed to update user: ' + res.error)
         }
+    }
+
+    const formatEnvironments = (envsDataRaw: any) => {
+        if (!envsDataRaw) return 'None'
+        const data = typeof envsDataRaw === 'string' ? JSON.parse(envsDataRaw) : envsDataRaw
+        if (Array.isArray(data)) {
+            return data.map((e: any) => {
+                const env = environments?.find(x => x.id === e.envId)
+                return `${env?.name || e.envId} (${e.role})`
+            }).join(', ')
+        }
+        if (typeof data === 'object') {
+            return Object.entries(data).map(([name, role]) => `${name} (${role})`).join(', ')
+        }
+        return String(data)
     }
 
     const formatFolders = (foldersDataRaw: any) => {
@@ -343,12 +406,59 @@ export function RbacSettingsDialog() {
                                         })}
                                     </div>
                                 </div>
+
+                                {/* Environments Field */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flexShrink: 0 }}>
+                                    <label style={{ fontSize: 'calc(10px * var(--font-scale))', fontWeight: 500, color: '#A1A1AA', margin: 0 }}>Allowed Environments</label>
+                                    <div className="bg-white/5 border border-white/10 rounded-xl custom-scrollbar" style={{ overflow: 'hidden', overflowY: 'auto', maxHeight: '180px' }}>
+                                        {environments?.map(e => {
+                                            const isSelected = newUser.environments.includes(e.id);
+                                            const isGlobal = e.isGlobal || e.name.toLowerCase() === 'global';
+                                            return (
+                                                <div key={e.id} className="group hover:bg-white/5 transition-all" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                                    <label style={{ display: 'flex', alignItems: 'center', gap: '16px', cursor: isGlobal ? 'default' : 'pointer', flex: 1, minWidth: 0 }}>
+                                                        <input type="checkbox" checked={isSelected} disabled={isGlobal}
+                                                            className={`border-white/20 bg-transparent text-white focus:ring-0 focus:ring-offset-0 transition-all checked:bg-white ${isGlobal ? 'opacity-50 cursor-default' : 'cursor-pointer'}`}
+                                                            style={{ width: '18px', height: '18px', borderRadius: '6px', flexShrink: 0 }}
+                                                            onChange={val => {
+                                                                if (isGlobal) return;
+                                                                const next = val.target.checked
+                                                                    ? [...newUser.environments, e.id]
+                                                                    : newUser.environments.filter(x => x !== e.id)
+                                                                const nextRoles = { ...newUser.environmentRoles };
+                                                                if (val.target.checked && !nextRoles[e.id]) nextRoles[e.id] = 'viewer';
+                                                                setNewUser({ ...newUser, environments: next, environmentRoles: nextRoles })
+                                                            }} />
+                                                        <span className={`${isGlobal ? 'text-white' : 'group-hover:text-white'} transition-colors truncate`} style={{ fontSize: '14px', color: isGlobal ? '#FFFFFF' : '#A1A1AA' }}>
+                                                            {e.name} {isGlobal && <span style={{ fontSize: '10px', color: '#71717A', marginLeft: '4px' }}>(Always Assigned)</span>}
+                                                        </span>
+                                                    </label>
+
+                                                    {isSelected && (
+                                                        <select
+                                                            value={newUser.environmentRoles[e.id] || 'viewer'}
+                                                            onChange={val => setNewUser({
+                                                                ...newUser,
+                                                                environmentRoles: { ...newUser.environmentRoles, [e.id]: val.target.value as any }
+                                                            })}
+                                                            className="bg-transparent hover:text-white transition-colors cursor-pointer"
+                                                            style={{ fontSize: '12px', fontWeight: 600, color: '#71717A', outline: 'none', border: 'none', marginLeft: '12px' }}
+                                                        >
+                                                            <option value="viewer" style={{ background: '#151515' }}>Viewer</option>
+                                                            <option value="editor" style={{ background: '#151515' }}>Editor</option>
+                                                        </select>
+                                                    )}
+                                                </div>
+                                            )
+                                        })}
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Anchored Buttons */}
                             <div style={{ flexShrink: 0, padding: '0 32px 32px 32px', display: 'flex', gap: '16px' }}>
                                 {editingMember && (
-                                    <button onClick={() => { setEditingMember(null); setNewUser({ email: '', role: 'viewer', folders: [], folderRoles: {} }) }}
+                                    <button onClick={() => { setEditingMember(null); setNewUser({ email: '', role: 'viewer', folders: [], folderRoles: {}, environments: [], environmentRoles: {} }) }}
                                         className="border border-white/10 hover:bg-white/5 hover:text-white transition-all cursor-pointer"
                                         style={{ flex: 1, height: '48px', fontSize: '14px', fontWeight: 600, color: '#A1A1AA', borderRadius: '12px', background: 'transparent' }}>
                                         Cancel
@@ -401,9 +511,15 @@ export function RbacSettingsDialog() {
                                                         {member.role}
                                                     </span>
                                                 </div>
-                                                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', fontSize: '13px', color: '#71717A', lineHeight: 1.5 }}>
-                                                    <span style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#52525B', marginTop: '2px' }}>Folders:</span>
-                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatFolders(member.allowed_folders)}</span>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#71717A', lineHeight: 1.5 }}>
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                                        <span style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#52525B', marginTop: '2px', flexShrink: 0 }}>Folders:</span>
+                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatFolders(member.allowed_folders)}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                                                        <span style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#52525B', marginTop: '2px', flexShrink: 0 }}>Envs:</span>
+                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatEnvironments(member.allowed_environments)}</span>
+                                                    </div>
                                                 </div>
                                             </div>
 
@@ -523,6 +639,7 @@ export function RbacSettingsDialog() {
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px' }}>
                                 <SuccessField label="User ID" value={successData.id} />
                                 <SuccessField label="Email" value={successData.email} />
+                                <SuccessField label="Environment Access" value={successData.environments} />
                             </div>
 
                             <div style={{ padding: '16px', background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.1)', borderRadius: '12px' }}>

@@ -1,4 +1,4 @@
-import { initDB } from '../src/db/proxyDb.js';
+import { initDB, ensureSchema } from '../src/db/proxyDb.js';
 
 export default async function handler(req: any, res: any) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,6 +10,12 @@ export default async function handler(req: any, res: any) {
     }
     try {
         const db = await initDB();
+
+        // Force migration if requested
+        if (new URL(req.url, `http://${req.headers.host}`).searchParams.get('migrate') === 'true') {
+            await ensureSchema(db);
+        }
+
         await db.query('SELECT 1');
         res.status(200).json({
             status: 'ok',

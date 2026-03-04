@@ -48,3 +48,18 @@ export function mapRemoteApi(a: any): any {
         createdAt: a.created_at || a.createdAt
     };
 }
+export function mapRemoteEnvironment(e: any): any {
+    if (!e) return e;
+    return {
+        id: e.id,
+        projectId: e.project_id || e.projectId,
+        folderId: e.folder_id || e.folderId || null,
+        name: e.name,
+        baseUrl: e.base_url || e.baseUrl || '',
+        isGlobal: [1, true, 'true', '1'].includes(e.is_global ?? e.isGlobal),
+        variables: e.variables || '{}',
+        lastSync: e.last_sync || e.lastSync || null,
+        syncStatus: 'synced',
+        createdAt: e.created_at || e.createdAt
+    };
+}

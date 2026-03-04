@@ -181,10 +181,12 @@ export function useDeleteProject() {
 
             // 2. Local Cleanup/Update
             if (target === 'local' || target === 'both') {
-                await db.transaction('rw', [db.projects, db.folders, db.apiCollections, db.syncQueue], async () => {
+                await db.transaction('rw', [db.projects, db.folders, db.apiCollections, db.environments, db.syncQueue, db.teamConnections], async () => {
                     await db.apiCollections.where('projectId').equals(id).delete()
                     await db.folders.where('projectId').equals(id).delete()
+                    await db.environments.where('projectId').equals(id).delete()
                     await db.syncQueue.where('projectId').equals(id).delete()
+                    await db.teamConnections.where('projectId').equals(id).delete()
                     await db.projects.delete(id)
                 })
             } else if (target === 'remote') {
@@ -214,10 +216,10 @@ export function useImportProject() {
             const res = await (window as any).electronAPI.fetchRemoteData(url, projectId)
             if (!res.success) throw new Error(res.error || 'Failed to fetch remote data')
 
-            const { folders, apis } = res
+            const { folders, apis, environments } = res
 
             // 2. Save locally
-            await db.transaction('rw', [db.projects, db.folders, db.apiCollections, db.syncQueue], async () => {
+            await db.transaction('rw', [db.projects, db.folders, db.apiCollections, db.environments, db.syncQueue], async () => {
                 // Ensure project exists locally
                 await db.projects.put({
                     id: projectId,
@@ -265,6 +267,23 @@ export function useImportProject() {
                         createdAt: a.created_at ? new Date(a.created_at).getTime() : Date.now()
                     })
                 }
+
+                // Save Environments
+                await db.environments.where('projectId').equals(projectId).delete()
+                for (const e of (environments || [])) {
+                    await db.environments.add({
+                        id: e.id,
+                        projectId: projectId,
+                        folderId: e.folder_id || null,
+                        name: e.name,
+                        baseUrl: e.base_url || '',
+                        isGlobal: [1, true, 'true', '1'].includes(e.is_global),
+                        variables: typeof e.variables === 'string' ? e.variables : JSON.stringify(e.variables || {}),
+                        lastSync: Date.now(),
+                        syncStatus: 'synced',
+                        createdAt: e.created_at ? new Date(e.created_at).getTime() : Date.now()
+                    })
+                }
             })
 
             return { id: projectId }
@@ -273,6 +292,7 @@ export function useImportProject() {
             qc.invalidateQueries({ queryKey: ['projects'] })
             qc.invalidateQueries({ queryKey: ['folders'] })
             qc.invalidateQueries({ queryKey: ['apis'] })
+            qc.invalidateQueries({ queryKey: ['environments'] })
         }
     })
 }
