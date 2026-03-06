@@ -32,6 +32,9 @@ CREATE TABLE IF NOT EXISTS api_collections (
   url_params TEXT, -- JSON
   headers TEXT,    -- JSON
   body_type VARCHAR(20) DEFAULT 'none',
+  raw_type VARCHAR(20) DEFAULT 'json',
+  form_data TEXT,     -- JSON
+  urlencoded TEXT,    -- JSON
   request_body TEXT, -- JSON
   response_examples TEXT, -- JSON
   version INT DEFAULT 1,

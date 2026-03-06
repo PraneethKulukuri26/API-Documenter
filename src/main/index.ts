@@ -1,7 +1,8 @@
 import { app, BrowserWindow, shell, ipcMain, dialog } from 'electron'
-import { join } from 'path'
+import path, { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import fs from 'fs'
+import os from 'os'
 import mysql from 'mysql2/promise'
 import pg from 'pg'
 import { spawn } from 'child_process'
@@ -85,8 +86,57 @@ ipcMain.handle('select-directory', async () => {
     return result.canceled ? null : result.filePaths[0]
 })
 
+ipcMain.handle('select-files', async () => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+        properties: ['openFile', 'multiSelections']
+    })
+    return result.canceled ? null : result.filePaths
+})
+
 ipcMain.handle('get-app-path', () => app.getPath('userData'))
 ipcMain.handle('get-app-version', () => app.getVersion())
+
+ipcMain.handle("export-pdf", async (_, html, fileName) => {
+    const win = new BrowserWindow({
+        show: false,
+        width: 900,
+        height: 1200
+    })
+    const tempHtmlPath = path.join(os.tmpdir(), `api-doc-export-${Date.now()}.html`)
+    fs.writeFileSync(tempHtmlPath, html)
+
+    try {
+        await win.loadFile(tempHtmlPath)
+    } catch (e) {
+        console.error("Failed to load temp HTML file for PDF generation", e)
+    }
+
+    const pdf = await win.webContents.printToPDF({
+        printBackground: true,
+        preferCSSPageSize: true,
+        margins: {
+            marginType: 'none'
+        }
+    })
+
+    try {
+        if (fs.existsSync(tempHtmlPath)) {
+            fs.unlinkSync(tempHtmlPath)
+        }
+    } catch (e) {
+        console.error("Failed to cleanup temp HTML file", e)
+    }
+
+    const { filePath } = await dialog.showSaveDialog({
+        defaultPath: fileName
+    })
+
+    if (filePath) {
+        fs.writeFileSync(filePath, pdf)
+    }
+
+    win.close()
+})
 
 // ─── HTTP Request Handler (Postman-like API testing) ─────────────
 ipcMain.handle('send-http-request', async (_event, opts: {
@@ -94,14 +144,48 @@ ipcMain.handle('send-http-request', async (_event, opts: {
     method: string
     headers: Record<string, string>
     body?: string
+    formFields?: { key: string, value: string, type: 'text' | 'file' }[]
 }) => {
     const start = performance.now()
     try {
         const fetchOpts: RequestInit = {
             method: opts.method,
-            headers: opts.headers
+            headers: { ...opts.headers }
         }
-        if (opts.body && !['GET', 'HEAD'].includes(opts.method.toUpperCase())) {
+
+        if (opts.formFields && opts.formFields.length > 0 && !['GET', 'HEAD'].includes(opts.method.toUpperCase())) {
+            const formData = new FormData()
+            for (const field of opts.formFields) {
+                if (field.type === 'file') {
+                    let filePaths: string[] = []
+                    try {
+                        const parsed = JSON.parse(field.value)
+                        filePaths = Array.isArray(parsed) ? parsed : [field.value]
+                    } catch (e) {
+                        filePaths = field.value ? [field.value] : []
+                    }
+
+                    for (const fp of filePaths) {
+                        if (fp && fs.existsSync(fp)) {
+                            const content = fs.readFileSync(fp)
+                            const blob = new Blob([content])
+                            formData.append(field.key, blob, path.basename(fp))
+                        }
+                    }
+                } else {
+                    formData.append(field.key, field.value)
+                }
+            }
+            fetchOpts.body = formData as any
+
+            // Remove manual Content-Type if it was set to multipart/form-data, 
+            // fetch will set it with the correct boundary
+            const ct = (fetchOpts.headers as any)['Content-Type'] || (fetchOpts.headers as any)['content-type']
+            if (ct && ct.toLowerCase().includes('multipart/form-data')) {
+                delete (fetchOpts.headers as any)['Content-Type']
+                delete (fetchOpts.headers as any)['content-type']
+            }
+        } else if (opts.body && !['GET', 'HEAD'].includes(opts.method.toUpperCase())) {
             fetchOpts.body = opts.body
         }
 
@@ -161,7 +245,27 @@ ipcMain.handle('create-remote-tables', async (_event, url: string) => {
     const schema = `
         CREATE TABLE IF NOT EXISTS projects (id VARCHAR(50) PRIMARY KEY, name VARCHAR(100) NOT NULL, database_url VARCHAR(500), proxy_url VARCHAR(500), last_deployed_at TIMESTAMP NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS folders (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50), name VARCHAR(100) NOT NULL, description TEXT, order_index INT DEFAULT 0, last_sync TIMESTAMP NULL, sync_status VARCHAR(20) DEFAULT 'synced', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
-        CREATE TABLE IF NOT EXISTS api_collections (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50), folder_id VARCHAR(50), name VARCHAR(100) NOT NULL, description TEXT, method VARCHAR(10) NOT NULL, path TEXT NOT NULL, url_params TEXT, headers TEXT, body_type VARCHAR(20) DEFAULT 'none', request_body TEXT, response_examples TEXT, version INT DEFAULT 1, last_sync TIMESTAMP NULL, sync_status VARCHAR(20) DEFAULT 'synced', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS api_collections (
+            id VARCHAR(50) PRIMARY KEY, 
+            project_id VARCHAR(50), 
+            folder_id VARCHAR(50), 
+            name VARCHAR(100) NOT NULL, 
+            description TEXT, 
+            method VARCHAR(10) NOT NULL, 
+            path TEXT NOT NULL, 
+            url_params TEXT, 
+            headers TEXT,   
+            body_type VARCHAR(20) DEFAULT 'none', 
+            raw_type VARCHAR(20) DEFAULT 'json',
+            form_data TEXT,
+            urlencoded TEXT,
+            request_body TEXT, 
+            response_examples TEXT, 
+            version INT DEFAULT 1, 
+            last_sync TIMESTAMP NULL, 
+            sync_status VARCHAR(20) DEFAULT 'synced', 
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
         CREATE TABLE IF NOT EXISTS rbac_users (id VARCHAR(50) PRIMARY KEY, email VARCHAR(100), token VARCHAR(100) UNIQUE NOT NULL, allowed_folders TEXT NOT NULL, project_id VARCHAR(50), role VARCHAR(20) DEFAULT 'viewer', created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS environments (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50), folder_id VARCHAR(50), name VARCHAR(100) NOT NULL, base_url TEXT, is_global BOOLEAN DEFAULT FALSE, variables TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
         CREATE TABLE IF NOT EXISTS sync_queue (id VARCHAR(50) PRIMARY KEY, local_id VARCHAR(50), table_name VARCHAR(50), operation VARCHAR(20), data TEXT NOT NULL, status VARCHAR(20) DEFAULT 'pending', retries INT DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
@@ -169,7 +273,10 @@ ipcMain.handle('create-remote-tables', async (_event, url: string) => {
     const migrations = [
         `ALTER TABLE projects ADD COLUMN IF NOT EXISTS last_deployed_at TIMESTAMP NULL;`,
         `ALTER TABLE projects ADD COLUMN IF NOT EXISTS proxy_url VARCHAR(500);`,
-        `ALTER TABLE rbac_users ADD COLUMN IF NOT EXISTS allowed_environments TEXT;`
+        `ALTER TABLE rbac_users ADD COLUMN IF NOT EXISTS allowed_environments TEXT;`,
+        `ALTER TABLE api_collections ADD COLUMN IF NOT EXISTS raw_type VARCHAR(20) DEFAULT 'json';`,
+        `ALTER TABLE api_collections ADD COLUMN IF NOT EXISTS form_data TEXT;`,
+        `ALTER TABLE api_collections ADD COLUMN IF NOT EXISTS urlencoded TEXT;`
     ]
     const statements = schema.trim().split(';').map(s => s.trim()).filter(Boolean)
 
@@ -351,19 +458,25 @@ ipcMain.handle('sync-direct', async (_event, url: string, entries: any[]) => {
                             await conn.execute(
                                 `INSERT INTO api_collections (
                                     id, project_id, folder_id, name, description, method, path, 
-                                    url_params, headers, body_type, request_body, response_examples, version, sync_status
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
+                                    url_params, headers, body_type, raw_type, form_data, urlencoded,
+                                    request_body, response_examples, version, sync_status
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) 
                                 ON DUPLICATE KEY UPDATE 
                                     name=?, description=?, method=?, path=?, url_params=?, headers=?, 
-                                    body_type=?, request_body=?, response_examples=?, version=?, sync_status=?`,
+                                    body_type=?, raw_type=?, form_data=?, urlencoded=?,
+                                    request_body=?, response_examples=?, version=?, sync_status=?`,
                                 [
                                     payload.id, payload.projectId, payload.folderId, payload.name, payload.description || '', payload.method, payload.path,
                                     JSON.stringify(payload.urlParams || []), JSON.stringify(payload.headers || []),
-                                    payload.bodyType || 'none', JSON.stringify(payload.requestBody || ''),
+                                    payload.bodyType || 'none', payload.rawType || 'json',
+                                    JSON.stringify(payload.formData || []), JSON.stringify(payload.urlencoded || []),
+                                    payload.requestBody || '',
                                     JSON.stringify(payload.responseExamples || []), payload.version || 1, 'synced',
                                     payload.name, payload.description || '', payload.method, payload.path,
                                     JSON.stringify(payload.urlParams || []), JSON.stringify(payload.headers || []),
-                                    payload.bodyType || 'none', JSON.stringify(payload.requestBody || ''),
+                                    payload.bodyType || 'none', payload.rawType || 'json',
+                                    JSON.stringify(payload.formData || []), JSON.stringify(payload.urlencoded || []),
+                                    payload.requestBody || '',
                                     JSON.stringify(payload.responseExamples || []), payload.version || 1, 'synced'
                                 ]
                             )
@@ -419,15 +532,19 @@ ipcMain.handle('sync-direct', async (_event, url: string, entries: any[]) => {
                             await client.query(
                                 `INSERT INTO api_collections (
                                     id, project_id, folder_id, name, description, method, path, 
-                                    url_params, headers, body_type, request_body, response_examples, version, sync_status
-                                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) 
+                                    url_params, headers, body_type, raw_type, form_data, urlencoded,
+                                    request_body, response_examples, version, sync_status
+                                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17) 
                                 ON CONFLICT (id) DO UPDATE SET 
                                     name=$4, description=$5, method=$6, path=$7, url_params=$8, headers=$9, 
-                                    body_type=$10, request_body=$11, response_examples=$12, version=$13, sync_status=$14`,
+                                    body_type=$10, raw_type=$11, form_data=$12, urlencoded=$13,
+                                    request_body=$14, response_examples=$15, version=$16, sync_status=$17`,
                                 [
                                     payload.id, payload.projectId, payload.folderId, payload.name, payload.description || '', payload.method, payload.path,
                                     JSON.stringify(payload.urlParams || []), JSON.stringify(payload.headers || []),
-                                    payload.bodyType || 'none', JSON.stringify(payload.requestBody || ''),
+                                    payload.bodyType || 'none', payload.rawType || 'json',
+                                    JSON.stringify(payload.formData || []), JSON.stringify(payload.urlencoded || []),
+                                    payload.requestBody || '',
                                     JSON.stringify(payload.responseExamples || []), payload.version || 1, 'synced'
                                 ]
                             )

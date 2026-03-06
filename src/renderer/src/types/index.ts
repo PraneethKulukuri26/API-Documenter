@@ -1,7 +1,8 @@
 // ─── HTTP Method Types ───────────────────────────────────────────
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS'
 
-export type BodyType = 'json' | 'form' | 'raw' | 'none'
+export type BodyType = 'none' | 'form-data' | 'urlencoded' | 'raw'
+export type RawType = 'json' | 'text' | 'html' | 'xml'
 
 export type SyncStatus = 'synced' | 'pending' | 'conflict' | 'offline'
 
@@ -13,6 +14,7 @@ export interface KeyValuePair {
     key: string
     value: string
     enabled: boolean
+    type?: 'text' | 'file'
 }
 
 // ─── Response Example Metadata ──────────────────────────────────
@@ -88,6 +90,9 @@ export interface ApiCollection {
     urlParams: KeyValuePair[]
     headers: KeyValuePair[]
     bodyType: BodyType
+    rawType?: RawType
+    formData?: KeyValuePair[]
+    urlencoded?: KeyValuePair[]
     requestBody: string
     responseExamples: ResponseExample[]
     version: number

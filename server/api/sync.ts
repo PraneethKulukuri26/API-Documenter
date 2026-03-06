@@ -90,12 +90,15 @@ export default async function handler(req: any, res: any) {
                         await db.execute(
                             `INSERT INTO api_collections (
                 id, project_id, folder_id, name, description, method, path, 
-                url_params, headers, body_type, request_body, response_examples, version, sync_status
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                url_params, headers, body_type, raw_type, form_data, urlencoded,
+                request_body, response_examples, version, sync_status
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                             [
                                 payload.id, user.projectId, folderId, payload.name, payload.description || '', payload.method, payload.path,
                                 JSON.stringify(payload.urlParams || []), JSON.stringify(payload.headers || []),
-                                payload.bodyType || 'none', JSON.stringify(payload.requestBody || ''),
+                                payload.bodyType || 'none', payload.rawType || 'json',
+                                JSON.stringify(payload.formData || []), JSON.stringify(payload.urlencoded || []),
+                                payload.requestBody || '',
                                 JSON.stringify(payload.responseExamples || []), payload.version || 1, 'synced'
                             ]
                         );
@@ -104,13 +107,15 @@ export default async function handler(req: any, res: any) {
                         await db.execute(
                             `UPDATE api_collections SET 
                 name = ?, description = ?, method = ?, path = ?, 
-                url_params = ?, headers = ?, body_type = ?, 
+                url_params = ?, headers = ?, body_type = ?, raw_type = ?,
+                form_data = ?, urlencoded = ?,
                 request_body = ?, response_examples = ?, version = ?, sync_status = ?
               WHERE id = ?`,
                             [
                                 payload.name, payload.description, payload.method, payload.path,
-                                JSON.stringify(payload.urlParams), JSON.stringify(payload.headers), payload.bodyType,
-                                JSON.stringify(payload.requestBody), JSON.stringify(payload.responseExamples), payload.version, 'synced',
+                                JSON.stringify(payload.urlParams), JSON.stringify(payload.headers), payload.bodyType, payload.rawType,
+                                JSON.stringify(payload.formData), JSON.stringify(payload.urlencoded),
+                                payload.requestBody, JSON.stringify(payload.responseExamples), payload.version, 'synced',
                                 payload.id
                             ]
                         );

@@ -43,19 +43,22 @@ export default async function handler(req: any, res: any) {
             await checkFolderAccess(context, folderId, 'write');
             const {
                 name, description, method, path,
-                url_params, headers, body_type, request_body, response_examples, version
+                url_params, headers, body_type, raw_type, form_data, urlencoded,
+                request_body, response_examples, version
             } = req.body;
 
             await db.execute(
                 `UPDATE api_collections SET 
           name = ?, description = ?, method = ?, path = ?, 
-          url_params = ?, headers = ?, body_type = ?, 
+          url_params = ?, headers = ?, body_type = ?, raw_type = ?,
+          form_data = ?, urlencoded = ?, 
           request_body = ?, response_examples = ?, version = ?, sync_status = ?
         WHERE id = ?`,
                 [
                     name, description, method, path,
-                    JSON.stringify(url_params), JSON.stringify(headers), body_type,
-                    JSON.stringify(request_body), JSON.stringify(response_examples), version, 'synced',
+                    JSON.stringify(url_params), JSON.stringify(headers), body_type, raw_type,
+                    JSON.stringify(form_data), JSON.stringify(urlencoded),
+                    request_body, JSON.stringify(response_examples), version, 'synced',
                     id
                 ]
             );

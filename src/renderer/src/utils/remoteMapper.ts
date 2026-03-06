@@ -21,12 +21,35 @@ export function mapRemoteFolder(f: any): any {
 export function mapRemoteApi(a: any): any {
     if (!a) return a;
 
-    // Parse nested JSON if they are strings (typical for direct SQL results)
-    const parseJson = (val: any) => {
-        if (typeof val === 'string') {
-            try { return JSON.parse(val); } catch (e) { return val; }
+    // Robustly parse JSON that might be double-stringified
+    const robustParse = (val: any) => {
+        if (typeof val !== 'string') return val;
+        if (!val || val === 'null' || val === 'undefined') return val;
+
+        let current = val;
+        try {
+            // Unescape if it's double stringified
+            // Example: "\"{\\\"foo\\\":\\\"bar\\\"}\"" -> "{\"foo\":\"bar\"}" -> {foo: "bar"}
+            while (typeof current === 'string' &&
+                (current.trim().startsWith('{') || current.trim().startsWith('[') || current.trim().startsWith('"'))) {
+                const parsed = JSON.parse(current);
+                // If it parsed into a different string, keep going
+                // If it parsed into an object/array, we're done
+                if (typeof parsed === 'string' && parsed === current) break;
+                current = parsed;
+                if (typeof current !== 'string') break;
+            }
+        } catch (e) {
+            // If it fails to parse at any point, return the last successful result
         }
-        return val;
+        return current;
+    };
+
+    const asArray = (val: any) => Array.isArray(val) ? val : [];
+    const asString = (val: any) => {
+        if (typeof val === 'string') return val;
+        if (val === null || val === undefined) return '';
+        try { return JSON.stringify(val, null, 2); } catch (e) { return String(val); }
     };
 
     return {
@@ -37,11 +60,14 @@ export function mapRemoteApi(a: any): any {
         description: a.description,
         method: a.method,
         path: a.path,
-        urlParams: parseJson(a.url_params || a.urlParams || []),
-        headers: parseJson(a.headers || a.headers || []),
+        urlParams: asArray(robustParse(a.url_params || a.urlParams || [])),
+        headers: asArray(robustParse(a.headers || a.headers || [])),
         bodyType: a.body_type || a.bodyType || 'none',
-        requestBody: a.request_body || a.requestBody || '',
-        responseExamples: parseJson(a.response_examples || a.responseExamples || []),
+        rawType: a.raw_type || a.rawType || 'json',
+        formData: asArray(robustParse(a.form_data || a.formData || [])),
+        urlencoded: asArray(robustParse(a.urlencoded || a.urlencoded || [])),
+        requestBody: asString(robustParse(a.request_body || a.requestBody || '')),
+        responseExamples: asArray(robustParse(a.response_examples || a.responseExamples || [])),
         version: a.version || 1,
         lastSync: a.last_sync || a.lastSync || null,
         syncStatus: a.sync_status || a.syncStatus || 'synced',

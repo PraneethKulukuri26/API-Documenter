@@ -28,6 +28,7 @@ export interface ElectronAPI {
     saveFile: (filePath: string, data: string) => Promise<{ success: boolean; error?: string }>
     readFile: (filePath: string) => Promise<{ success: boolean; data?: string; error?: string }>
     selectDirectory: () => Promise<string | null>
+    selectFiles: () => Promise<string[] | null>
     getAppPath: () => Promise<string>
     getAppVersion: () => Promise<string>
     // HTTP requests
@@ -53,6 +54,8 @@ export interface ElectronAPI {
     onUpdateProgress: (callback: (percent: number) => void) => () => void
     // Platform info
     platform: string
+    // Document Generation
+    exportPdf: (html: string, fileName: string) => Promise<void>
 }
 
 const electronAPI: ElectronAPI = {
@@ -63,6 +66,7 @@ const electronAPI: ElectronAPI = {
     saveFile: (filePath, data) => ipcRenderer.invoke('save-file', filePath, data),
     readFile: (filePath) => ipcRenderer.invoke('read-file', filePath),
     selectDirectory: () => ipcRenderer.invoke('select-directory'),
+    selectFiles: () => ipcRenderer.invoke('select-files'),
     getAppPath: () => ipcRenderer.invoke('get-app-path'),
     getAppVersion: () => ipcRenderer.invoke('get-app-version'),
     sendHttpRequest: (opts) => ipcRenderer.invoke('send-http-request', opts),
@@ -95,7 +99,9 @@ const electronAPI: ElectronAPI = {
         ipcRenderer.on('update-progress', subscription)
         return () => ipcRenderer.removeListener('update-progress', subscription)
     },
-    platform: process.platform
+    platform: process.platform,
+    exportPdf: (html, fileName) => ipcRenderer.invoke('export-pdf', html, fileName)
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)
+

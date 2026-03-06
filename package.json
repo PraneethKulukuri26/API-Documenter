@@ -1,6 +1,6 @@
 {
   "name": "api-documenter",
-  "version": "1.0.17",
+  "version": "1.0.18",
   "description": "Self-hosted Postman alternative with folder-level RBAC and offline-first documentation",
   "main": "./out/main/index.js",
   "author": "Praneeth Kulukuri",
@@ -22,10 +22,15 @@
     "dexie-react-hooks": "^1.1.7",
     "electron-store": "^10.0.0",
     "electron-updater": "^6.8.3",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.0",
+    "latex.js": "^0.12.6",
     "mysql2": "^3.18.1",
     "pg": "^8.19.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "uuid": "^11.0.3",
     "zustand": "^5.0.2"
   },

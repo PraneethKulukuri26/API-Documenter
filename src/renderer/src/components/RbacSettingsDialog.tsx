@@ -213,6 +213,81 @@ export function RbacSettingsDialog() {
         }
     }
 
+    const renderPermissionTags = (type: 'folder' | 'env', dataRaw: any) => {
+        if (!dataRaw) return <span style={{ color: '#52525B', fontSize: '13px' }}>None</span>
+        const data = typeof dataRaw === 'string' ? JSON.parse(dataRaw) : dataRaw
+
+        // Map and deduplicate by ID
+        const resolvedMap = new Map<string, { label: string, role: string }>()
+
+        if (type === 'folder') {
+            if (Array.isArray(data)) {
+                if (data[0] === '*') {
+                    resolvedMap.set('*', { label: 'All Folders', role: 'admin' })
+                } else {
+                    data.forEach((f: any) => {
+                        const rawId = typeof f === 'string' ? f : (f.folderId || f.id || '')
+                        const role = typeof f === 'object' ? (f.role || 'editor') : 'editor'
+                        const id = String(rawId).trim()
+                        const folder = folders?.find(x =>
+                            String(x.id).trim().toLowerCase() === id.toLowerCase() ||
+                            String(x.name).trim().toLowerCase() === id.toLowerCase()
+                        )
+                        resolvedMap.set(id, { label: folder?.name || id, role })
+                    })
+                }
+            } else if (typeof data === 'object' && data !== null) {
+                Object.entries(data).forEach(([key, role]) => {
+                    const id = String(key).trim()
+                    const folder = folders?.find(x =>
+                        String(x.id).trim().toLowerCase() === id.toLowerCase() ||
+                        String(x.name).trim().toLowerCase() === id.toLowerCase()
+                    )
+                    resolvedMap.set(id, { label: folder?.name || id, role: role as any })
+                })
+            }
+        } else {
+            if (Array.isArray(data)) {
+                data.forEach((e: any) => {
+                    const rawId = typeof e === 'string' ? e : (e.envId || e.id || '')
+                    const role = typeof e === 'object' ? (e.role || 'viewer') : 'viewer'
+                    const id = String(rawId).trim()
+                    const env = environments?.find(x =>
+                        String(x.id).trim().toLowerCase() === id.toLowerCase() ||
+                        String(x.name).trim().toLowerCase() === id.toLowerCase()
+                    )
+                    resolvedMap.set(id, { label: env?.name || id, role })
+                })
+            } else if (typeof data === 'object' && data !== null) {
+                Object.entries(data).forEach(([key, role]) => {
+                    const id = String(key).trim()
+                    const env = environments?.find(x =>
+                        String(x.id).trim().toLowerCase() === id.toLowerCase() ||
+                        String(x.name).trim().toLowerCase() === id.toLowerCase()
+                    )
+                    resolvedMap.set(id, { label: env?.name || id, role: role as any })
+                })
+            }
+        }
+
+        const tags = Array.from(resolvedMap.entries()).map(([id, info], i) => (
+            <Tag
+                key={id + i}
+                label={info.label}
+                role={info.role}
+                icon={id === '*' ? 'star' : (type === 'folder' ? 'folder' : 'Zap')}
+            />
+        ))
+
+        if (tags.length === 0) return <span style={{ color: '#52525B', fontSize: '12px' }}>None</span>
+
+        return (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {tags}
+            </div>
+        )
+    }
+
     const formatEnvironments = (envsDataRaw: any) => {
         if (!envsDataRaw) return 'None'
         const data = typeof envsDataRaw === 'string' ? JSON.parse(envsDataRaw) : envsDataRaw
@@ -222,10 +297,7 @@ export function RbacSettingsDialog() {
                 return `${env?.name || e.envId} (${e.role})`
             }).join(', ')
         }
-        if (typeof data === 'object') {
-            return Object.entries(data).map(([name, role]) => `${name} (${role})`).join(', ')
-        }
-        return String(data)
+        return 'None'
     }
 
     const formatFolders = (foldersDataRaw: any) => {
@@ -239,12 +311,8 @@ export function RbacSettingsDialog() {
                     return `${folder?.name || f.folderId} (${f.role})`
                 }).join(', ')
             }
-            return data.join(', ')
         }
-        if (typeof data === 'object') {
-            return Object.entries(data).map(([name, role]) => `${name} (${role})`).join(', ')
-        }
-        return String(data)
+        return 'None'
     }
 
     const isDeployed = !!project?.proxyUrl;
@@ -511,14 +579,14 @@ export function RbacSettingsDialog() {
                                                         {member.role}
                                                     </span>
                                                 </div>
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px', color: '#71717A', lineHeight: 1.5 }}>
-                                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                                                        <span style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#52525B', marginTop: '2px', flexShrink: 0 }}>Folders:</span>
-                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatFolders(member.allowed_folders)}</span>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '4px' }}>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                        <span style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#52525B' }}>Folders Access</span>
+                                                        {renderPermissionTags('folder', member.allowed_folders)}
                                                     </div>
-                                                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                                                        <span style={{ fontWeight: 700, fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#52525B', marginTop: '2px', flexShrink: 0 }}>Envs:</span>
-                                                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{formatEnvironments(member.allowed_environments)}</span>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                                        <span style={{ fontWeight: 700, fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#52525B' }}>Environments</span>
+                                                        {renderPermissionTags('env', member.allowed_environments)}
                                                     </div>
                                                 </div>
                                             </div>
@@ -704,6 +772,44 @@ function SuccessField({ label, value, isSecret, isBadge }: { label: string, valu
                 </div>
                 <CopyButton text={value} />
             </div>
+        </div>
+    )
+}
+
+function Tag({ label, role, icon }: { label: string, role: string, icon: 'folder' | 'Zap' | 'star' }) {
+    return (
+        <div
+            className="group/tag bg-white/[0.03] border border-white/10 rounded-lg hover:border-white/20 transition-all"
+            style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '4px 10px',
+                height: '28px'
+            }}
+        >
+            <div style={{ color: '#71717A', display: 'flex', alignItems: 'center' }}>
+                {icon === 'folder' && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" /></svg>}
+                {icon === 'Zap' && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" /></svg>}
+                {icon === 'star' && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>}
+            </div>
+            <span style={{ fontSize: '12px', fontWeight: 500, color: '#D4D4D8', whiteSpace: 'nowrap' }}>{label}</span>
+            <span
+                style={{
+                    fontSize: '9px',
+                    fontWeight: 700,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.02em',
+                    color: role === 'editor' ? '#A78BFA' : role === 'admin' ? '#FDE68A' : '#71717A',
+                    padding: '1px 4px',
+                    borderRadius: '4px',
+                    background: role === 'editor' ? 'rgba(167,139,250,0.1)' : role === 'admin' ? 'rgba(253,230,138,0.1)' : 'rgba(255,255,255,0.05)',
+                    border: '1px solid currentColor',
+                    boxShadow: 'inset 0 0 10px rgba(0,0,0,0.2)'
+                }}
+            >
+                {role}
+            </span>
         </div>
     )
 }

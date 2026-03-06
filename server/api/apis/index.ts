@@ -64,7 +64,8 @@ export default async function handler(req: any, res: any) {
         if (req.method === 'POST') {
             const {
                 id, folder_id, name, description, method, path,
-                url_params, headers, body_type, request_body, response_examples
+                url_params, headers, body_type, raw_type, form_data, urlencoded,
+                request_body, response_examples
             } = req.body;
 
             if (!id || !folder_id || !name || !method) {
@@ -77,12 +78,15 @@ export default async function handler(req: any, res: any) {
             await db.execute(
                 `INSERT INTO api_collections (
           id, project_id, folder_id, name, description, method, path, 
-          url_params, headers, body_type, request_body, response_examples, version, sync_status
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          url_params, headers, body_type, raw_type, form_data, urlencoded, 
+          request_body, response_examples, version, sync_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     id, user.projectId, folder_id, name, description || '', method, path,
                     JSON.stringify(url_params || []), JSON.stringify(headers || []),
-                    body_type || 'none', JSON.stringify(request_body || ''),
+                    body_type || 'none', raw_type || 'json',
+                    JSON.stringify(form_data || []), JSON.stringify(urlencoded || []),
+                    request_body || '',
                     JSON.stringify(response_examples || []), 1, 'synced'
                 ]
             );

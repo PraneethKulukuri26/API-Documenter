@@ -39,16 +39,49 @@ export async function ensureSchema(adapter: DbAdapter) {
 
         // 2. Add allowed_environments to rbac_users
         try {
-            await adapter.execute('ALTER TABLE rbac_users ADD COLUMN allowed_environments TEXT');
+            await adapter.execute('ALTER TABLE rbac_users ADD COLUMN IF NOT EXISTS allowed_environments TEXT');
             console.log('[Schema] Column allowed_environments added.');
         } catch (e: any) {
-            // Ignore if column already exists (Error 1060 in MySQL)
-            const msg = e.message.toLowerCase();
-            const isDuplicate = msg.includes('duplicate') || msg.includes('already exists') || msg.includes('1060');
-            if (!isDuplicate) {
-                console.warn('[Schema] Column update warning:', e.message);
-            } else {
-                console.log('[Schema] Column allowed_environments already exists.');
+            // Ignore if column already exists
+        }
+
+        // 3. Add raw_type, form_data, urlencoded to api_collections
+        const columnsToAdd = [
+            { name: 'raw_type', type: 'VARCHAR(20) DEFAULT \'json\'' },
+            { name: 'form_data', type: 'TEXT' },
+            { name: 'urlencoded', type: 'TEXT' }
+        ];
+
+        for (const col of columnsToAdd) {
+            try {
+                // Try modern syntax first
+                await adapter.execute(`ALTER TABLE api_collections ADD COLUMN IF NOT EXISTS ${col.name} ${col.type}`);
+                console.log(`[Schema] Column ${col.name} processed successfully (IF NOT EXISTS).`);
+            } catch (e: any) {
+                const msg = e.message.toLowerCase();
+                // Check if syntax error (likely due to IF NOT EXISTS on older MySQL)
+                if (msg.includes('syntax') || msg.includes('if not exists') || msg.includes('check the manual')) {
+                    console.log(`[Schema] IF NOT EXISTS not supported, falling back for ${col.name}...`);
+                    try {
+                        await adapter.execute(`ALTER TABLE api_collections ADD COLUMN ${col.name} ${col.type}`);
+                        console.log(`[Schema] Column ${col.name} added successfully (fallback).`);
+                    } catch (e2: any) {
+                        const msg2 = e2.message.toLowerCase();
+                        const isDuplicate = msg2.includes('duplicate') || msg2.includes('already exists') || msg2.includes('1060') || msg2.includes('42701');
+                        if (isDuplicate) {
+                            console.log(`[Schema] Column ${col.name} already exists.`);
+                        } else {
+                            console.error(`[Schema] Critical failure adding column ${col.name}:`, e2.message);
+                        }
+                    }
+                } else {
+                    const isDuplicate = msg.includes('duplicate') || msg.includes('already exists') || msg.includes('1060') || msg.includes('42701');
+                    if (isDuplicate) {
+                        console.log(`[Schema] Column ${col.name} already exists.`);
+                    } else {
+                        console.error(`[Schema] Error processing column ${col.name}:`, e.message);
+                    }
+                }
             }
         }
     } catch (err: any) {
@@ -98,11 +131,7 @@ export async function getApisByFolders(adapter: DbAdapter, projectId: string, al
         ORDER BY f.order_index, ac.created_at
     `, [projectId, ...allowedFolders]);
 
-    return rows.map(row => ({
-        ...row,
-        headers: JSON.parse(row.headers || '[]'),
-        request_body: JSON.parse(row.request_body || '{}')
-    }));
+    return rows;
 }
 
 export async function getFolderById(adapter: DbAdapter, folderId: string, projectId: string) {

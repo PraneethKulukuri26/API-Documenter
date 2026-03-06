@@ -9,12 +9,22 @@ import { ResponseViewer } from './ResponseViewer'
 import { ResponsePanel } from './ResponsePanel'
 import { VariableInput } from './VariableInput'
 import type { HttpResponse } from './ResponsePanel'
-import type { HttpMethod, BodyType, EditorTab, KeyValuePair, ResponseExample } from '@/types'
+import type { HttpMethod, BodyType, RawType, EditorTab, KeyValuePair, ResponseExample } from '@/types'
 import { v4 as uuid } from 'uuid'
 
 const METHODS: HttpMethod[] = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
 const BODY_TYPES: { v: BodyType; l: string }[] = [
-    { v: 'none', l: 'None' }, { v: 'json', l: 'JSON' }, { v: 'form', l: 'Form' }, { v: 'raw', l: 'Raw' }
+    { v: 'none', l: 'None' },
+    { v: 'form-data', l: 'Form Data' },
+    { v: 'urlencoded', l: 'x-www-form-urlencoded' },
+    { v: 'raw', l: 'Raw' }
+]
+
+const RAW_TYPES: { v: RawType; l: string }[] = [
+    { v: 'json', l: 'JSON' },
+    { v: 'text', l: 'Text' },
+    { v: 'html', l: 'HTML' },
+    { v: 'xml', l: 'XML' }
 ]
 
 const MIN_TOP = 300
@@ -36,10 +46,20 @@ export function RequestEditor({ apiId }: Props) {
     const [urlParams, setUrlParams] = useState<KeyValuePair[]>([])
     const [headers, setHeaders] = useState<KeyValuePair[]>([])
     const [bodyType, setBodyType] = useState<BodyType>('none')
+    const [rawType, setRawType] = useState<RawType>('json')
+    const [formData, setFormData] = useState<KeyValuePair[]>([])
+    const [urlencoded, setUrlencoded] = useState<KeyValuePair[]>([])
     const [requestBody, setRequestBody] = useState('')
     const [responses, setResponses] = useState<ResponseExample[]>([])
     const [saved, setSaved] = useState(true)
     const [methodDd, setMethodDd] = useState(false)
+    const [rawTypeDd, setRawTypeDd] = useState(false)
+    const ignoreSync = useRef(false)
+    const latestStateRef = useRef({ path: '', method: 'GET' as HttpMethod, urlParams: [] as KeyValuePair[], headers: [] as KeyValuePair[], bodyType: 'none' as BodyType, rawType: 'json' as RawType, formData: [] as KeyValuePair[], urlencoded: [] as KeyValuePair[], requestBody: '' })
+
+    useEffect(() => {
+        latestStateRef.current = { path, method, urlParams, headers, bodyType, rawType, formData, urlencoded, requestBody }
+    }, [path, method, urlParams, headers, bodyType, rawType, formData, urlencoded, requestBody])
 
     // ── Live response state ──
     const [liveResponse, setLiveResponse] = useState<HttpResponse | null>(null)
@@ -60,6 +80,9 @@ export function RequestEditor({ apiId }: Props) {
         setName(api.name); setDescription(api.description); setMethod(api.method)
         setPath(api.path); setUrlParams(api.urlParams || []); setHeaders(api.headers || [])
         setBodyType(api.bodyType); setRequestBody(api.requestBody)
+        setRawType(api.rawType || 'json')
+        setFormData(api.formData || [])
+        setUrlencoded(api.urlencoded || [])
         setResponses(api.responseExamples || []); setSaved(true)
         setLiveResponse(null)
     }, [api])
@@ -68,15 +91,124 @@ export function RequestEditor({ apiId }: Props) {
         if (!api) return
         const dirty = name !== api.name || description !== api.description || method !== api.method || path !== api.path ||
             JSON.stringify(urlParams) !== JSON.stringify(api.urlParams) || JSON.stringify(headers) !== JSON.stringify(api.headers) ||
-            bodyType !== api.bodyType || requestBody !== api.requestBody || JSON.stringify(responses) !== JSON.stringify(api.responseExamples)
+            bodyType !== api.bodyType || requestBody !== api.requestBody ||
+            rawType !== (api.rawType || 'json') ||
+            JSON.stringify(formData) !== JSON.stringify(api.formData || []) ||
+            JSON.stringify(urlencoded) !== JSON.stringify(api.urlencoded || []) ||
+            JSON.stringify(responses) !== JSON.stringify(api.responseExamples)
         setSaved(!dirty)
-    }, [api, name, description, method, path, urlParams, headers, bodyType, requestBody, responses])
+    }, [api, name, description, method, path, urlParams, headers, bodyType, requestBody, responses, rawType, formData, urlencoded])
 
     const save = useCallback(async () => {
         if (!api) return
-        await updateApi.mutateAsync({ id: api.id, name, description, method, path, urlParams, headers, bodyType, requestBody, responseExamples: responses, version: (api.version || 0) + 1 })
+        await updateApi.mutateAsync({
+            id: api.id, name, description, method, path, urlParams, headers,
+            bodyType, rawType, formData, urlencoded, requestBody,
+            responseExamples: responses, version: (api.version || 0) + 1
+        })
         setSaved(true)
-    }, [api, name, description, method, path, urlParams, headers, bodyType, requestBody, responses, updateApi])
+    }, [api, name, description, method, path, urlParams, headers, bodyType, rawType, formData, urlencoded, requestBody, responses, updateApi])
+
+    const updateContentType = useCallback((type: BodyType, rType: RawType) => {
+        setHeaders(prev => {
+            const h = [...prev]
+            const idx = h.findIndex(x => x.key.toLowerCase() === 'content-type')
+            let val = ''
+            if (type === 'urlencoded') val = 'application/x-www-form-urlencoded'
+            else if (type === 'form-data') val = 'multipart/form-data'
+            else if (type === 'raw') {
+                if (rType === 'json') val = 'application/json'
+                else if (rType === 'xml') val = 'application/xml'
+                else if (rType === 'html') val = 'text/html'
+                else val = 'text/plain'
+            }
+
+            if (val) {
+                if (idx > -1) {
+                    if (h[idx].value !== val) h[idx] = { ...h[idx], value: val, enabled: true }
+                } else {
+                    h.push({ id: uuid(), key: 'Content-Type', value: val, enabled: true })
+                }
+            } else if (idx > -1) {
+                h.splice(idx, 1)
+            }
+            latestStateRef.current.headers = h
+            return h
+        })
+    }, [])
+
+    const handlePathChange = useCallback((newPath: string) => {
+        setPath(newPath)
+        latestStateRef.current.path = newPath
+        if (ignoreSync.current) return
+
+        ignoreSync.current = true
+        const queryIndex = newPath.indexOf('?')
+        if (queryIndex !== -1) {
+            const queryString = newPath.substring(queryIndex + 1)
+            const pairs = queryString.split('&').filter(p => p)
+            const newParams: KeyValuePair[] = pairs.map(p => {
+                const [k, v] = p.split('=')
+                try {
+                    return {
+                        id: uuid(),
+                        key: decodeURIComponent(k || ''),
+                        value: decodeURIComponent(v || ''),
+                        enabled: true
+                    }
+                } catch (e) {
+                    return { id: uuid(), key: k || '', value: v || '', enabled: true }
+                }
+            })
+            setUrlParams(newParams)
+        } else {
+            setUrlParams([])
+        }
+        ignoreSync.current = false
+    }, [])
+
+    const handleParamsChange = useCallback((newParams: KeyValuePair[]) => {
+        setUrlParams(newParams)
+        latestStateRef.current.urlParams = newParams
+        if (ignoreSync.current) return
+
+        ignoreSync.current = true
+        setPath(currentPath => {
+            const queryIndex = currentPath.indexOf('?')
+            const base = queryIndex === -1 ? currentPath : currentPath.substring(0, queryIndex)
+            const enabled = newParams.filter(p => p.enabled && (p.key || p.value))
+
+            let newPath = base
+            if (enabled.length > 0) {
+                const qs = enabled.map(p => {
+                    const k = encodeURIComponent(p.key)
+                    const v = encodeURIComponent(p.value)
+                    return `${k}=${v}`
+                }).join('&')
+                newPath = `${base}?${qs}`
+            }
+            latestStateRef.current.path = newPath
+            return newPath
+        })
+        ignoreSync.current = false
+    }, [])
+
+    const handleHeadersChange = useCallback((v: KeyValuePair[]) => { setHeaders(v); latestStateRef.current.headers = v }, [])
+    const handleFormDataChange = useCallback((v: KeyValuePair[]) => { setFormData(v); latestStateRef.current.formData = v }, [])
+    const handleUrlencodedChange = useCallback((v: KeyValuePair[]) => { setUrlencoded(v); latestStateRef.current.urlencoded = v }, [])
+    const handleRequestBodyChange = useCallback((v: string) => { setRequestBody(v); latestStateRef.current.requestBody = v }, [])
+
+    const handleBodyTypeChange = useCallback((v: BodyType) => {
+        setBodyType(v);
+        latestStateRef.current.bodyType = v;
+        updateContentType(v, latestStateRef.current.rawType)
+    }, [updateContentType])
+
+    const handleRawTypeChange = useCallback((v: RawType) => {
+        setRawType(v);
+        latestStateRef.current.rawType = v;
+        updateContentType(latestStateRef.current.bodyType, v)
+    }, [updateContentType])
 
     useEffect(() => {
         const h = (e: KeyboardEvent) => {
@@ -134,46 +266,74 @@ export function RequestEditor({ apiId }: Props) {
         if (sending) return
         setSending(true); setLiveResponse(null); setResponseCollapsed(false)
 
-        const activeEnv = environments?.find(e => e.id === currentEnvironmentId)
-        let fullUrl = resolveVariables(path)
+        const { path: rPath, method: rMethod, urlParams: rParams, headers: rHeaders, bodyType: rBodyType, rawType: rRawType, formData: rFormData, urlencoded: rUrlencoded, requestBody: rRequestBody } = latestStateRef.current
+
+        // Strip existing query string from path to prevent duplication
+        const queryIndex = rPath.indexOf('?')
+        const basePath = queryIndex === -1 ? rPath : rPath.substring(0, queryIndex)
+        let fullUrl = resolveVariables(basePath)
 
         if (!/^https?:\/\//i.test(fullUrl) && fullUrl.length > 0) {
             fullUrl = 'https://' + fullUrl
         }
 
-        const enabledParams = urlParams.filter(p => p.enabled && p.key)
+        const enabledParams = rParams.filter(p => p.enabled && p.key)
         if (enabledParams.length > 0) {
             const qs = enabledParams.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(resolveVariables(p.value))}`).join('&')
             fullUrl += (fullUrl.includes('?') ? '&' : '?') + qs
         }
 
         const hdrs: Record<string, string> = {}
-        headers.filter(h => h.enabled && h.key).forEach(h => {
+        rHeaders.filter(h => h.enabled && h.key).forEach(h => {
             hdrs[h.key] = resolveVariables(h.value)
         })
 
         let body: string | undefined
-        const processedBody = resolveVariables(requestBody)
+        let formFields: { key: string, value: string, type: 'text' | 'file' }[] | undefined
+        const processedBody = resolveVariables(rRequestBody)
 
-        if (bodyType === 'json' && processedBody) {
+        if (rBodyType === 'raw') {
             body = processedBody
-            if (!hdrs['Content-Type'] && !hdrs['content-type']) hdrs['Content-Type'] = 'application/json'
-        } else if (bodyType === 'raw' && processedBody) {
-            body = processedBody
-        } else if (bodyType === 'form') {
-            const formParams = urlParams.filter(p => p.enabled && p.key)
-            body = formParams.map(p => `${encodeURIComponent(p.key)}=${encodeURIComponent(resolveVariables(p.value))}`).join('&')
-            if (!hdrs['Content-Type'] && !hdrs['content-type']) hdrs['Content-Type'] = 'application/x-www-form-urlencoded'
+            if (!hdrs['Content-Type'] && !hdrs['content-type']) {
+                const ct = rRawType === 'json' ? 'application/json' :
+                    rRawType === 'xml' ? 'application/xml' :
+                        rRawType === 'html' ? 'text/html' : 'text/plain'
+                hdrs['Content-Type'] = ct
+            }
+        } else if (rBodyType === 'form-data') {
+            formFields = rFormData.filter(p => p.enabled && p.key).map(p => ({
+                key: p.key,
+                value: p.type === 'file' ? p.value : resolveVariables(p.value),
+                type: (p.type as 'text' | 'file') || 'text'
+            }))
+            if (!hdrs['Content-Type'] && !hdrs['content-type']) {
+                hdrs['Content-Type'] = 'multipart/form-data'
+            }
+        } else if (rBodyType === 'urlencoded') {
+            const params = new URLSearchParams()
+            rUrlencoded.filter(p => p.enabled && p.key).forEach(p => {
+                params.append(p.key, resolveVariables(p.value))
+            })
+            body = params.toString()
+            if (!hdrs['Content-Type'] && !hdrs['content-type']) {
+                hdrs['Content-Type'] = 'application/x-www-form-urlencoded'
+            }
         }
 
 
         try {
-            const res = await (window as any).electronAPI.sendHttpRequest({ url: fullUrl, method, headers: hdrs, body })
+            const res = await (window as any).electronAPI.sendHttpRequest({
+                url: fullUrl,
+                method: rMethod,
+                headers: hdrs,
+                body,
+                formFields
+            })
             setLiveResponse(res)
         } finally {
             setSending(false)
         }
-    }, [path, method, urlParams, headers, bodyType, requestBody, sending, environments, currentEnvironmentId, resolveVariables])
+    }, [path, method, urlParams, headers, bodyType, rawType, formData, urlencoded, requestBody, sending, environments, currentEnvironmentId, resolveVariables])
 
     const saveAsExample = (status: number, body: string, resHeaders: Record<string, string>) => {
         const headerPairs: KeyValuePair[] = Object.entries(resHeaders).map(([k, v]) => ({ id: uuid(), key: k, value: v, enabled: true }))
@@ -265,7 +425,7 @@ export function RequestEditor({ apiId }: Props) {
                         {/* URL Input */}
                         <VariableInput
                             value={path}
-                            onChange={setPath}
+                            onChange={handlePathChange}
                             variables={variablesMap}
                             placeholder="https://api.example.com/endpoint"
                             onKeyDown={e => e.key === 'Enter' && sendRequest()}
@@ -320,41 +480,72 @@ export function RequestEditor({ apiId }: Props) {
                     {activeEditorTab === 'params' && (
                         <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <SectionHeader title="URL Parameters" sub="Query string parameters appended to the request URL" />
-                            <KeyValueEditor pairs={urlParams} onChange={setUrlParams} keyPlaceholder="Parameter" valuePlaceholder="Value" variables={variablesMap} />
+                            <KeyValueEditor pairs={urlParams} onChange={handleParamsChange} keyPlaceholder="Parameter" valuePlaceholder="Value" variables={variablesMap} />
                         </div>
                     )}
                     {activeEditorTab === 'headers' && (
                         <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <SectionHeader title="Request Headers" sub="HTTP headers sent with the request" />
-                            <KeyValueEditor pairs={headers} onChange={setHeaders} keyPlaceholder="Header" valuePlaceholder="Value" variables={variablesMap} />
+                            <KeyValueEditor pairs={headers} onChange={handleHeadersChange} keyPlaceholder="Header" valuePlaceholder="Value" variables={variablesMap} />
                         </div>
                     )}
                     {activeEditorTab === 'body' && (
                         <div className="fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <SectionHeader title="Request Body" sub="Data sent in the request payload" />
-                            <div style={{ display: 'flex', gap: '8px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                 {BODY_TYPES.map(bt => {
                                     const isAct = bodyType === bt.v
                                     return (
-                                        <button key={bt.v} onClick={() => setBodyType(bt.v)}
-                                            style={{ fontSize: '12px', fontWeight: 500, padding: '6px 14px', borderRadius: '8px', background: isAct ? '#FFFFFF' : 'transparent', color: isAct ? '#000000' : '#6B7280', border: `1px solid ${isAct ? '#FFFFFF' : '#2A2A2A'}`, transition: '150ms ease', cursor: 'pointer' }}
+                                        <button key={bt.v} onClick={() => handleBodyTypeChange(bt.v)}
+                                            style={{ fontSize: '11px', fontWeight: 500, padding: '6px 14px', borderRadius: '8px', background: isAct ? '#2A2A2A' : 'transparent', color: isAct ? '#FFFFFF' : '#6B7280', border: `1px solid ${isAct ? '#3A3A3A' : '#1F1F1F'}`, transition: '150ms ease', cursor: 'pointer' }}
                                             onMouseEnter={e => { if (!isAct) { e.currentTarget.style.background = '#151515'; e.currentTarget.style.color = '#FFFFFF' } }}
                                             onMouseLeave={e => { if (!isAct) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#6B7280' } }}>
                                             {bt.l}
                                         </button>
                                     )
                                 })}
+
+                                {bodyType === 'raw' && (
+                                    <div style={{ position: 'relative', marginLeft: 'auto' }}>
+                                        <button onClick={() => setRawTypeDd(!rawTypeDd)}
+                                            style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', fontWeight: 600, color: '#A1A1A1', background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px 8px' }}>
+                                            {RAW_TYPES.find(r => r.v === rawType)?.l || 'JSON'}
+                                            <svg width="8" height="5" viewBox="0 0 8 5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"><polyline points="1,1 4,4 7,1" /></svg>
+                                        </button>
+                                        {rawTypeDd && (
+                                            <>
+                                                <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setRawTypeDd(false)} />
+                                                <div className="fade-in"
+                                                    style={{ position: 'absolute', top: '100%', right: 0, zIndex: 50, marginTop: '8px', background: '#111111', border: '1px solid #2A2A2A', borderRadius: '10px', boxShadow: '0 8px 32px rgba(0,0,0,0.6)', padding: '4px', minWidth: '100px' }}>
+                                                    {RAW_TYPES.map(r => (
+                                                        <button key={r.v} onClick={() => { handleRawTypeChange(r.v); setRawTypeDd(false) }}
+                                                            style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: '11px', fontWeight: 500, padding: '8px 12px', borderRadius: '6px', color: rawType === r.v ? '#FFFFFF' : '#9CA3AF', background: rawType === r.v ? '#1F1F1F' : 'transparent', border: 'none', cursor: 'pointer' }}>
+                                                            {r.l}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </>
+                                        )}
+                                    </div>
+                                )}
                             </div>
-                            {bodyType === 'json' && <JsonEditor value={requestBody} onChange={setRequestBody} />}
+
                             {bodyType === 'raw' && (
-                                <div style={{ background: '#111111', border: '1px solid #1F1F1F', borderRadius: '12px', overflow: 'hidden' }}>
-                                    <textarea value={requestBody} onChange={e => setRequestBody(e.target.value)} placeholder="Raw request body…"
-                                        className="w-full"
-                                        style={{ padding: '16px', fontSize: '12px', fontFamily: 'monospace', resize: 'none', background: 'transparent', color: '#FFFFFF', border: 'none', minHeight: '200px', tabSize: 2, lineHeight: 1.8, outline: 'none' }}
-                                        spellCheck={false} />
-                                </div>
+                                <>
+                                    {rawType === 'json' ? (
+                                        <JsonEditor value={requestBody} onChange={handleRequestBodyChange} />
+                                    ) : (
+                                        <div style={{ background: '#111111', border: '1px solid #1F1F1F', borderRadius: '12px', overflow: 'hidden' }}>
+                                            <textarea value={requestBody} onChange={e => handleRequestBodyChange(e.target.value)} placeholder={`Raw ${rawType} body…`}
+                                                className="w-full"
+                                                style={{ padding: '16px', fontSize: '12px', fontFamily: 'monospace', resize: 'none', background: 'transparent', color: '#FFFFFF', border: 'none', minHeight: '200px', tabSize: 2, lineHeight: 1.8, outline: 'none' }}
+                                                spellCheck={false} />
+                                        </div>
+                                    )}
+                                </>
                             )}
-                            {bodyType === 'form' && <KeyValueEditor pairs={urlParams} onChange={setUrlParams} keyPlaceholder="Field" valuePlaceholder="Value" variables={variablesMap} />}
+                            {bodyType === 'form-data' && <KeyValueEditor pairs={formData} onChange={handleFormDataChange} keyPlaceholder="Field" valuePlaceholder="Value" variables={variablesMap} showTypeSelector />}
+                            {bodyType === 'urlencoded' && <KeyValueEditor pairs={urlencoded} onChange={handleUrlencodedChange} keyPlaceholder="Key" valuePlaceholder="Value" variables={variablesMap} />}
                             {bodyType === 'none' && (
                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '64px 0', background: '#111111', border: '1px solid #1F1F1F', borderRadius: '12px' }}>
                                     <p style={{ fontSize: '12px', color: '#6B7280', margin: 0 }}>No body for this request</p>

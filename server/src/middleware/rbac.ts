@@ -81,27 +81,21 @@ export async function checkEnvironmentAccess(context: AuthContext, envIdOrName: 
     if (user.role === 'admin') return;
 
     // Globals are read-accessible to everyone in the project
-    // If they want to write/delete global, they need to be an editor/admin
-    // But usually global envs are handled specially.
+    if (isGlobal && action === 'read') return;
 
     let effectiveRole: 'viewer' | 'editor' = user.role;
-    let isAllowed = false;
+    let isAllowed = isGlobal; // Globals are recognized project resources, but access depends on role
 
-    if (isGlobal) {
-        if (action === 'read') return;
-        isAllowed = true; // For now allow global edit if they are not viewer (checked later)
-    } else {
-        // Check specific permissions
-        const match = user.allowedEnvironments.find((e: any) => {
-            const idOrName = typeof e === 'string' ? e : e.envId;
-            return idOrName === '*' || idOrName === envIdOrName;
-        });
+    // Check specific permissions (overrides)
+    const match = user.allowedEnvironments?.find((e: any) => {
+        const idOrName = typeof e === 'string' ? e : e.envId;
+        return idOrName === '*' || idOrName === envIdOrName;
+    });
 
-        if (match) {
-            isAllowed = true;
-            if (typeof match === 'object' && (match as any).role) {
-                effectiveRole = (match as any).role;
-            }
+    if (match) {
+        isAllowed = true;
+        if (typeof match === 'object' && (match as any).role) {
+            effectiveRole = (match as any).role;
         }
     }
 
